@@ -83,6 +83,7 @@ void Application::HandleInput(const InputEvent& event) {
                 ExecuteSettingsItem();
                 return;
             case InputKey::OpenSettings:
+                CloseSettingsPage();
                 return;
             case InputKey::None:
                 return;
@@ -112,8 +113,19 @@ void Application::OpenSettingsPage() {
         return;
     }
 
+    const int browseable_page_count = std::max(1, pages_.Count() - 1);
+    if (!IsSettingsPage()) {
+        settings_return_page_index_ = std::clamp(current_page_index_, 0, browseable_page_count - 1);
+    }
     settings_selected_item_ = 0;
     current_page_index_ = pages_.Count() - kSettingsPageOffsetFromEnd;
+    UpdateDeviceState();
+    RenderCurrentPage(false);
+}
+
+void Application::CloseSettingsPage() {
+    const int browseable_page_count = std::max(1, pages_.Count() - 1);
+    current_page_index_ = std::clamp(settings_return_page_index_, 0, browseable_page_count - 1);
     SaveSettings();
     UpdateDeviceState();
     RenderCurrentPage(false);

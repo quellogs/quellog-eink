@@ -28,6 +28,7 @@ private:
 
     void HandleInput(const InputEvent& event);
     void OpenSettingsPage();
+    void CloseSettingsPage();
     void RenderCurrentPage(bool full_refresh);
     void NextPage();
     void PreviousPage();
@@ -57,6 +58,7 @@ private:
     int64_t last_refresh_us_ = 0;
     int refresh_count_ = 0;
     int settings_selected_item_ = 0;
+    int settings_return_page_index_ = 0;
 };
 
 #endif  // QUELLOG_APPLICATION_H_
