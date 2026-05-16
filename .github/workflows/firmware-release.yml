@@ -13,6 +13,8 @@ jobs:
   firmware-release:
     name: Package firmware release
     runs-on: ubuntu-latest
+    container:
+      image: anonysoul/quellog-firmware-builder:latest
     defaults:
       run:
         working-directory: firmware
@@ -20,11 +22,6 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
-      - name: Install ESP-IDF
-        uses: espressif/install-esp-idf-action@v1
-        with:
-          version: v5.3.2
 
       - name: Build firmware release package
         run: |

@@ -72,32 +72,47 @@ python3 scripts/build_release.py
 
 如果本机没有稳定的 ESP-IDF 环境，优先用 Docker。
 
-在仓库根目录执行：
+### 使用固件构建镜像
+
+固件构建镜像 `anonysoul/quellog-firmware-builder:latest` 提供了固定的构建环境：
+
+- ESP-IDF `v5.3.2`，与 GitHub Actions CI/Release 环境保持一致
+- Node.js 20，用于构建 `device-config-web`
+
+在仓库根目录执行 Release 构建：
 
 ```bash
 docker run --rm \
   -v "$(pwd):/workspace" \
   -w /workspace/firmware \
-  espressif/idf:release-v5.2 \
-  bash -lc '
-    apt-get update &&
-    apt-get install -y ca-certificates curl gnupg &&
-    mkdir -p /etc/apt/keyrings &&
-    curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key |
-      gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg &&
-    echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_20.x nodistro main" \
-      > /etc/apt/sources.list.d/nodesource.list &&
-    apt-get update &&
-    apt-get install -y nodejs &&
-    python3 scripts/build_release.py
-  '
+  anonysoul/quellog-firmware-builder:latest
+```
+
+如果要在 tag 构建时校验版本号：
+
+```bash
+docker run --rm \
+  -v "$(pwd):/workspace" \
+  -w /workspace/firmware \
+  anonysoul/quellog-firmware-builder:latest \
+  python3 scripts/build_release.py --tag v0.1.0
+```
+
+### 重新构建固件构建镜像
+
+如果需要更新镜像，Dockerfile 位于仓库根目录下的 `docker-firmware-builder/Dockerfile`：
+
+```bash
+docker build \
+  -t anonysoul/quellog-firmware-builder:latest \
+  -f docker-firmware-builder/Dockerfile \
+  docker-firmware-builder
 ```
 
 说明：
 
 - 挂载整个仓库到 `/workspace`，而不是只挂 `firmware/`
 - 这样脚本可以同时访问 `firmware/` 和根目录下的 `device-config-web/`
-- Node 20 在容器内临时安装，仅用于当前构建
 
 ## 4. 产物说明
 

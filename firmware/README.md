@@ -93,16 +93,16 @@ npm run build
 
 ## Docker 构建
 
-如果本机未安装或未加载 ESP-IDF 环境，也可以直接使用官方 Docker 镜像构建。
+如果本机未安装或未加载 ESP-IDF 环境，也可以直接使用固件构建镜像。
 
 在仓库根目录执行：
 
 ```bash
 docker run --rm \
-  -v "$(pwd)/firmware:/project" \
-  -w /project \
-  espressif/idf:release-v5.2 \
-  bash -lc 'apt-get update && apt-get install -y nodejs npm && idf.py set-target esp32s3 && idf.py build'
+  -v "$(pwd):/workspace" \
+  -w /workspace/firmware \
+  anonysoul/quellog-firmware-builder:latest \
+  bash -lc 'idf.py set-target esp32s3 && idf.py build'
 ```
 
 构建产物默认输出到 `firmware/build/` 目录。
