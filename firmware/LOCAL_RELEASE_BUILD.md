@@ -116,15 +116,12 @@ firmware/dist/release/v<version>/
 - `bootloader.bin`
 - `partition-table.bin`
 - `quellog_firmware.bin`
-- `font_partition.bin`
 - `FLASHING.md`
 - `manifest.json`
 
 注意：
 
-- `font_partition.bin` 会单独放在 release 目录中
-- 当前脚本不会把 `font_partition.bin` 打进 zip，只会放在解压目录里
-- 如果你的分发方式必须只靠 zip，需要先确认下游是否接受这个行为
+- 中文字库已内置在固件镜像中，不再生成或分发额外字库文件
 
 ## 5. 常见问题
 
@@ -196,7 +193,6 @@ python3 scripts/build_release.py --skip-build
 
 - `build/merged-binary.bin`
 - `build/flasher_args.json`
-- `build/font_partition.bin`
 
 适用于你已经执行过完整构建，只想重打包的场景。
 
@@ -223,4 +219,3 @@ python3 scripts/build_release.py --tag v0.1.0
 
 1. `cd firmware`
 2. `./build.sh` 或 `idf.py build`
-

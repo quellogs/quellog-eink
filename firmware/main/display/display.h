@@ -5,8 +5,6 @@
 #include <string>
 #include <vector>
 
-#include "bitmap_font.h"
-
 struct Rect {
     int x = 0;
     int y = 0;

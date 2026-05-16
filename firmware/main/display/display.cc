@@ -1,4 +1,5 @@
 #include "display.h"
+#include "lvgl_text_renderer.h"
 
 #include <esp_log.h>
 
@@ -30,23 +31,6 @@ std::string FormatAmount(int64_t cents) {
 
 int ClampToRange(int value, int min_value, int max_value) {
     return std::max(min_value, std::min(value, max_value));
-}
-
-void DrawGlyphBitmap(Display* display, int origin_x, int origin_y, const GlyphBitmap& glyph) {
-    if (glyph.bitmap == nullptr || glyph.bitmap_size == 0) {
-        return;
-    }
-
-    int bit_index = 0;
-    for (int y = 0; y < glyph.height; ++y) {
-        for (int x = 0; x < glyph.width; ++x) {
-            const bool black = (glyph.bitmap[bit_index / 8] & (1U << (bit_index % 8))) != 0;
-            if (black) {
-                display->SetPixel(origin_x + x, origin_y + y, true);
-            }
-            ++bit_index;
-        }
-    }
 }
 
 }  // namespace
@@ -116,13 +100,13 @@ void Display::DrawText(const Rect& rect, const char* text, TextAlign align) {
         return;
     }
 
-    BitmapFont& font = BitmapFont::Instance();
-    if (!font.EnsureLoaded()) {
-        ESP_LOGW(kTag, "font unavailable, cannot render text: %s", text);
+    const lv_font_t* font = LvglTextRenderer::SelectFontForHeight(rect.h);
+    if (font == nullptr) {
+        ESP_LOGW(kTag, "lvgl font unavailable, cannot render text: %s", text);
         return;
     }
 
-    const int text_width = MeasureTextWidth(text);
+    const int text_width = LvglTextRenderer::MeasureText(font, text);
     int cursor_x = rect.x;
     if (align == TextAlign::Center) {
         cursor_x = rect.x + ((rect.w - text_width) / 2);
@@ -130,29 +114,8 @@ void Display::DrawText(const Rect& rect, const char* text, TextAlign align) {
         cursor_x = rect.x + rect.w - text_width;
     }
     cursor_x = ClampToRange(cursor_x, rect.x, rect.x + rect.w);
-    const int cursor_y = rect.y + std::max(0, (rect.h - font.line_height()) / 2);
-
-    const std::string value(text);
-    size_t offset = 0;
-    while (offset < value.size()) {
-        uint32_t codepoint = 0;
-        if (!NextUtf8CodePoint(value, offset, codepoint)) {
-            break;
-        }
-
-        GlyphBitmap glyph;
-        if (!font.GetGlyph(codepoint, glyph)) {
-            continue;
-        }
-
-        const int glyph_x = cursor_x + glyph.x_offset;
-        const int glyph_y = cursor_y + glyph.y_offset;
-        DrawGlyphBitmap(this, glyph_x, glyph_y, glyph);
-        cursor_x += glyph.advance;
-        if (cursor_x > rect.x + rect.w) {
-            break;
-        }
-    }
+    const int cursor_y = rect.y + std::max(0, (rect.h - LvglTextRenderer::GetLineHeight(font)) / 2);
+    LvglTextRenderer::DrawText(this, font, cursor_x, cursor_y, rect.w, text);
 }
 
 void Display::DrawLine(int x1, int y1, int x2, int y2) {
@@ -211,11 +174,11 @@ void Display::SetPixel(int x, int y, bool black) {
 }
 
 int Display::MeasureTextWidth(const char* text) const {
-    return BitmapFont::Instance().MeasureText(text);
+    return LvglTextRenderer::MeasureText(LvglTextRenderer::GetDefaultTextFont(), text);
 }
 
 std::string Display::FitText(const std::string& text, int max_width, const char* ellipsis) const {
-    return BitmapFont::Instance().FitText(text, max_width, ellipsis);
+    return LvglTextRenderer::FitText(LvglTextRenderer::GetDefaultTextFont(), text, max_width, ellipsis);
 }
 
 void Display::RenderBarChart(const BarChartModel& model, const Rect& rect) {

@@ -21,8 +21,6 @@ DIST_DIR = PROJECT_DIR / "dist" / "release"
 BOARD_NAME = "zectrix-s3-epaper-4.2"
 TARGET = "esp32s3"
 ZIP_BASENAME_TEMPLATE = "quellog-firmware_v{version}"
-FONT_PARTITION_LABEL = "font"
-FONT_PARTITION_IMAGE = "font_partition.bin"
 
 
 def run_command(args: list[str]) -> None:
@@ -110,27 +108,9 @@ def package_filenames() -> dict[str, str]:
         "bootloader": "bootloader.bin",
         "partition_table": "partition-table.bin",
         "app": "quellog_firmware.bin",
-        "font_partition": FONT_PARTITION_IMAGE,
         "readme": "FLASHING.md",
         "manifest": "manifest.json",
     }
-
-
-def parse_partition_csv() -> dict[str, dict[str, str]]:
-    partition_file = PROJECT_DIR / "partitions.csv"
-    partitions: dict[str, dict[str, str]] = {}
-    for raw_line in partition_file.read_text(encoding="utf-8").splitlines():
-        line = raw_line.strip()
-        if not line or line.startswith("#"):
-            continue
-        name, p_type, subtype, offset, size, *_ = [part.strip() for part in line.split(",")]
-        partitions[name] = {
-            "type": p_type,
-            "subtype": subtype,
-            "offset": offset,
-            "size": size,
-        }
-    return partitions
 
 
 def build_package_name_map(flasher_args: dict) -> dict[str, str]:
@@ -155,9 +135,6 @@ def create_package_flash_args(flasher_args: dict) -> str:
         package_name = file_map.get(file_name, Path(file_name).name)
         lines.append(f"{offset} {package_name}")
 
-    font_offset = parse_partition_csv()[FONT_PARTITION_LABEL]["offset"]
-    lines.append(f"{font_offset} {FONT_PARTITION_IMAGE}")
-
     return "\n".join(lines) + "\n"
 
 
@@ -175,8 +152,6 @@ def create_package_flasher_args(flasher_args: dict) -> dict:
             package_args[key]["file"] = mapping.get(
                 package_args[key]["file"], Path(package_args[key]["file"]).name
             )
-
-    package_args["flash_files"][parse_partition_csv()[FONT_PARTITION_LABEL]["offset"]] = FONT_PARTITION_IMAGE
 
     return package_args
 
@@ -196,7 +171,6 @@ def create_manifest(version: str, flasher_args: dict) -> dict:
             package_files["bootloader"],
             package_files["partition_table"],
             package_files["app"],
-            package_files["font_partition"],
             package_files["readme"],
             package_files["manifest"],
         ],
@@ -219,8 +193,8 @@ def create_flashing_readme(version: str) -> str:
         ## 多文件烧录
 
         适用于按分区地址分别烧录各个镜像文件。`flash_args` 已包含
-        `bootloader.bin`、`partition-table.bin`、`quellog_firmware.bin`
-        和 `font_partition.bin` 的烧录地址。
+        `bootloader.bin`、`partition-table.bin` 和 `quellog_firmware.bin`
+        的烧录地址。
 
         ```bash
         python -m esptool --chip {TARGET} -p <PORT> -b 460800 --before default_reset --after hard_reset write_flash @flash_args
@@ -241,7 +215,6 @@ def create_flashing_readme(version: str) -> str:
 
 def merge_bin() -> None:
     flasher_args = load_flasher_args()
-    font_offset = parse_partition_csv()[FONT_PARTITION_LABEL]["offset"]
     args = [
         "-m",
         "esptool",
@@ -255,7 +228,6 @@ def merge_bin() -> None:
 
     for offset, file_name in flasher_args["flash_files"].items():
         args.extend([offset, str(BUILD_DIR / file_name)])
-    args.extend([font_offset, str(BUILD_DIR / FONT_PARTITION_IMAGE)])
 
     run_python_module_with_idf_env(args)
 
@@ -271,7 +243,6 @@ def ensure_required_build_outputs() -> None:
     required_paths = [
         BUILD_DIR / "merged-binary.bin",
         BUILD_DIR / "flasher_args.json",
-        BUILD_DIR / FONT_PARTITION_IMAGE,
     ]
     missing = [str(path) for path in required_paths if not path.exists()]
     if missing:
@@ -291,13 +262,11 @@ def write_package(version: str) -> Path:
     app_source = BUILD_DIR / flasher_args["app"]["file"]
     bootloader_source = BUILD_DIR / flasher_args["bootloader"]["file"]
     partition_source = BUILD_DIR / flasher_args["partition-table"]["file"]
-    font_source = BUILD_DIR / FONT_PARTITION_IMAGE
 
     shutil.copy2(BUILD_DIR / "merged-binary.bin", package_dir / package_files["merged_bin"])
     shutil.copy2(bootloader_source, package_dir / package_files["bootloader"])
     shutil.copy2(partition_source, package_dir / package_files["partition_table"])
     shutil.copy2(app_source, package_dir / package_files["app"])
-    shutil.copy2(font_source, package_dir / package_files["font_partition"])
 
     (package_dir / package_files["flash_args"]).write_text(
         create_package_flash_args(flasher_args),

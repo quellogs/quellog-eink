@@ -4,9 +4,11 @@ set(SOURCES
     "settings.cc"
     "boards/common/board.cc"
     "boards/zectrix-s3-epaper-4.2/zectrix-s3-epaper-4.2.cc"
-    "display/bitmap_font.cc"
     "display/display.cc"
+    "display/lvgl_text_renderer.cc"
     "display/ui_page_registry.cc"
+    "display/fonts/SourceHanSansSC_Medium_slim.c"
+    "display/fonts/SourceHanSansSC_Regular_slim.c"
     "display/pages/overview_page.cc"
     "display/pages/recent_records_page.cc"
     "display/pages/settings_page.cc"
@@ -23,15 +25,15 @@ idf_component_register(
     REQUIRES
         driver
         esp_app_format
-        esp_partition
         esp_timer
+        lvgl
         nvs_flash
         quellog_wifi
-        spi_flash
 )
 
 target_compile_definitions(
     ${COMPONENT_LIB}
     PRIVATE
     BOARD_NAME=\"zectrix-s3-epaper-4.2\"
+    LV_LVGL_H_INCLUDE_SIMPLE
 )

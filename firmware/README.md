@@ -9,7 +9,7 @@
 - 首页：账本总览
 - 页面：总览、最近记录、统计、设置
 - 数据：本地占位数据
-- 中文显示：内置 UTF-8 文本渲染与独立字体分区
+- 中文显示：内置 `SourceHanSansSC` 字库与 UTF-8 文本渲染
 - Wi‑Fi：支持 STA 联网与 SoftAP Web 配网
 - 配网：无已保存凭据时自动进入热点配网，设置页支持手动重新配网
 
@@ -20,9 +20,6 @@
 - `main/boards/*`：板级抽象与默认板型实现
 - `main/settings.*`：NVS 配置读写
 - `components/quellog_wifi/*`：Wi‑Fi 管理、SoftAP 配网、DNS captive portal、凭据保存
-- `assets/LXGWWenKai-Regular.ttf`：霞鹜文楷字体源文件
-- `assets/font_partition.bin`：基于霞鹜文楷预生成的中文字库分区镜像
-- `scripts/generate_font_partition.py`：字库维护脚本
 
 ## 配网说明
 
@@ -112,9 +109,8 @@ docker run --rm \
 
 说明：
 
-- 正常 `idf.py build` 会生成应用镜像与 `build/font_partition.bin`。
-- 默认 `idf.py flash` 仍只烧录 bootloader / partition-table / app。
-- 若需要完整中文显示，请使用 Release 包中的 `flash_args` 或 `merged-binary.bin` 进行烧录。
+- 中文字库已编进固件，不再需要额外字体分区或单独字库烧录。
+- 默认 `idf.py flash` 可以直接烧录完整可显示中文的固件。
 
 ## Release 打包
 
