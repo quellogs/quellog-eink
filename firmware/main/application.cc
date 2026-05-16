@@ -21,6 +21,7 @@ constexpr int kSettingsItemStorage = 3;
 constexpr int kSettingsItemDeviceInfo = 4;
 constexpr int kSettingsItemCount = 5;
 constexpr int kVolumeStepPercent = 10;
+constexpr int64_t kBatteryStatusCheckIntervalUs = 3 * 1000 * 1000;
 
 }  // namespace
 
@@ -59,6 +60,10 @@ void Application::Run() {
         const int64_t now_us = esp_timer_get_time();
         if (ShouldAutoRefresh(now_us)) {
             TriggerRefresh();
+        }
+
+        if (HasBatteryChargingStateChanged(now_us)) {
+            RenderCurrentPage(false);
         }
 
         if (network_state_dirty_.exchange(false, std::memory_order_acq_rel)) {
@@ -145,6 +150,11 @@ void Application::RenderCurrentPage(bool full_refresh) {
     }
 
     const AppContext context = BuildContext();
+    last_battery_status_check_us_ = esp_timer_get_time();
+    battery_status_initialized_ = true;
+    last_battery_known_ = context.battery_known;
+    last_battery_charging_ = context.battery_charging;
+
     const PageModel model = page->BuildModel(context);
     display_->RenderPage(model, BuildTopStatusBarState(context));
 }
@@ -352,6 +362,34 @@ TopStatusBarState Application::BuildTopStatusBarState(const AppContext& context)
 bool Application::ShouldAutoRefresh(int64_t now_us) const {
     (void)now_us;
     return false;
+}
+
+bool Application::HasBatteryChargingStateChanged(int64_t now_us) {
+    if (now_us - last_battery_status_check_us_ < kBatteryStatusCheckIntervalUs) {
+        return false;
+    }
+
+    last_battery_status_check_us_ = now_us;
+
+    int battery_level = 0;
+    bool battery_charging = false;
+    bool battery_external_power = false;
+    const bool battery_known = board_.GetBatteryLevel(battery_level, battery_charging, battery_external_power);
+
+    if (!battery_status_initialized_) {
+        battery_status_initialized_ = true;
+        last_battery_known_ = battery_known;
+        last_battery_charging_ = battery_charging;
+        return false;
+    }
+
+    if (battery_known == last_battery_known_ && battery_charging == last_battery_charging_) {
+        return false;
+    }
+
+    last_battery_known_ = battery_known;
+    last_battery_charging_ = battery_charging;
+    return true;
 }
 
 void Application::HandleNetworkEvent(NetworkEvent event, const std::string& data) {

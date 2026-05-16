@@ -44,6 +44,7 @@ private:
     AppContext BuildContext() const;
     TopStatusBarState BuildTopStatusBarState(const AppContext& context) const;
     bool ShouldAutoRefresh(int64_t now_us) const;
+    bool HasBatteryChargingStateChanged(int64_t now_us);
     void HandleNetworkEvent(NetworkEvent event, const std::string& data);
     void UpdateDeviceState();
 
@@ -59,6 +60,10 @@ private:
     int refresh_count_ = 0;
     int settings_selected_item_ = 0;
     int settings_return_page_index_ = 0;
+    int64_t last_battery_status_check_us_ = 0;
+    bool battery_status_initialized_ = false;
+    bool last_battery_known_ = false;
+    bool last_battery_charging_ = false;
 };
 
 #endif  // QUELLOG_APPLICATION_H_

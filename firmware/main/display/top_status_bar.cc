@@ -55,14 +55,15 @@ void DrawBatteryIcon(Display* display, int x, int center_y, int level, bool char
     display->DrawRect(body);
     display->FillRect(terminal);
 
+    if (charging) {
+        DrawChargingBolt(display, body.x + 6, body.y + 1);
+        return;
+    }
+
     const int clamped_level = std::clamp(level, 0, 100);
     const int fill_width = ((body.w - 4) * clamped_level) / 100;
     if (fill_width > 0) {
         display->FillRect({body.x + 2, body.y + 2, fill_width, body.h - 4});
-    }
-
-    if (charging) {
-        DrawChargingBolt(display, body.x + 6, body.y + 1);
     }
 }
 
