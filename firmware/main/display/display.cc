@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <cstdlib>
+#include <iterator>
 
 namespace {
 
@@ -13,8 +14,11 @@ constexpr int kPagePadding = 10;
 constexpr int kLineHeight = 16;
 constexpr int kSplitViewGap = 10;
 constexpr int kSplitViewMenuWidth = 116;
-constexpr int kSplitViewMenuRowHeight = 24;
+constexpr int kSplitViewMenuRowHeight = 30;
 constexpr int kSplitViewDetailPadding = 10;
+constexpr int kSplitViewMenuIconSize = 16;
+constexpr int kSplitViewMenuRadius = 6;
+constexpr int kSplitViewMenuTextHeight = 16;
 constexpr int kChartBottomLabelHeight = 18;
 constexpr int kChartAmountHeight = 14;
 constexpr int kChartGap = 5;
@@ -58,6 +62,101 @@ bool ShouldShowAmountLabel(const BarChartModel& model, int item_index) {
             return false;
     }
 }
+
+constexpr uint16_t kWifiIconRows[] = {
+    0b0000000000000000,
+    0b0000111111110000,
+    0b0011111111111100,
+    0b0111100000011110,
+    0b1110000000000111,
+    0b0000000000000000,
+    0b0000011111100000,
+    0b0001111111111000,
+    0b0011100000011100,
+    0b0000000000000000,
+    0b0000001111000000,
+    0b0000011111100000,
+    0b0000011111100000,
+    0b0000001111000000,
+    0b0000000000000000,
+    0b0000000000000000,
+};
+
+constexpr uint16_t kBluetoothIconRows[] = {
+    0b0000001110000000,
+    0b0000001111000000,
+    0b0000001111100000,
+    0b0000001111110000,
+    0b0000001110111000,
+    0b0000001110011100,
+    0b0011001110111000,
+    0b0001111111100000,
+    0b0000111111000000,
+    0b0001111111100000,
+    0b0011001110111000,
+    0b0000001110011100,
+    0b0000001110111000,
+    0b0000001111110000,
+    0b0000001111100000,
+    0b0000001110000000,
+};
+
+constexpr uint16_t kSoundIconRows[] = {
+    0b0000000000000000,
+    0b0000011000000100,
+    0b0000111000001100,
+    0b0001111000011000,
+    0b0011111000110000,
+    0b0111111001100110,
+    0b1111111001001110,
+    0b1111111001011100,
+    0b1111111001011100,
+    0b1111111001001110,
+    0b0111111001100110,
+    0b0011111000110000,
+    0b0001111000011000,
+    0b0000111000001100,
+    0b0000011000000100,
+    0b0000000000000000,
+};
+
+constexpr uint16_t kStorageIconRows[] = {
+    0b0000000000000000,
+    0b0011111111111100,
+    0b0111111111111110,
+    0b1111111111111111,
+    0b1110000000000111,
+    0b1111111111111111,
+    0b1111111111111111,
+    0b1111111111111111,
+    0b1111111111111111,
+    0b1111111111111111,
+    0b1111111111111111,
+    0b1111111111111111,
+    0b1111111111111111,
+    0b0111111111111110,
+    0b0011111111111100,
+    0b0000000000000000,
+};
+
+constexpr uint16_t kDeviceIconRows[] = {
+    0b0000000000000000,
+    0b0011111111111100,
+    0b0111111111111110,
+    0b0111111111111110,
+    0b0111111111111110,
+    0b0111111111111110,
+    0b0111111111111110,
+    0b0111111111111110,
+    0b0111111111111110,
+    0b0111111111111110,
+    0b0011111111111100,
+    0b0000001111000000,
+    0b0000001111000000,
+    0b0000111111110000,
+    0b0001111111111000,
+    0b0000000000000000,
+};
 
 }  // namespace
 
@@ -126,15 +225,24 @@ void Display::EndPage() {
 }
 
 void Display::DrawText(const Rect& rect, const char* text, TextAlign align) {
+    DrawText(rect, text, align, PixelColor::Black);
+}
+
+void Display::DrawText(const Rect& rect, const char* text, TextAlign align, PixelColor color) {
     if (text == nullptr || rect.w <= 0 || rect.h <= 0) {
         return;
     }
 
     const lv_font_t* font = LvglTextRenderer::SelectFontForHeight(rect.h);
-    DrawTextWithFont(rect, font, text, align);
+    DrawTextWithFont(rect, font, text, align, color);
 }
 
 void Display::DrawTextWithFont(const Rect& rect, const lv_font_t* font, const char* text, TextAlign align) {
+    DrawTextWithFont(rect, font, text, align, PixelColor::Black);
+}
+
+void Display::DrawTextWithFont(
+    const Rect& rect, const lv_font_t* font, const char* text, TextAlign align, PixelColor color) {
     if (text == nullptr || font == nullptr || rect.w <= 0 || rect.h <= 0) {
         return;
     }
@@ -148,7 +256,7 @@ void Display::DrawTextWithFont(const Rect& rect, const lv_font_t* font, const ch
     }
     cursor_x = ClampToRange(cursor_x, rect.x, rect.x + rect.w);
     const int cursor_y = rect.y + std::max(0, (rect.h - LvglTextRenderer::GetLineHeight(font)) / 2);
-    LvglTextRenderer::DrawText(this, font, cursor_x, cursor_y, rect.w, text);
+    LvglTextRenderer::DrawText(this, font, cursor_x, cursor_y, rect.w, text, color == PixelColor::Black);
 }
 
 void Display::DrawLine(int x1, int y1, int x2, int y2) {
@@ -186,13 +294,142 @@ void Display::DrawRect(const Rect& rect) {
 }
 
 void Display::FillRect(const Rect& rect) {
+    FillRectWithColor(rect, PixelColor::Black);
+}
+
+void Display::DrawLineWithColor(int x1, int y1, int x2, int y2, PixelColor color) {
+    int dx = std::abs(x2 - x1);
+    const int sx = x1 < x2 ? 1 : -1;
+    int dy = -std::abs(y2 - y1);
+    const int sy = y1 < y2 ? 1 : -1;
+    int err = dx + dy;
+
+    while (true) {
+        SetPixel(x1, y1, color == PixelColor::Black);
+        if (x1 == x2 && y1 == y2) {
+            break;
+        }
+        const int e2 = err * 2;
+        if (e2 >= dy) {
+            err += dy;
+            x1 += sx;
+        }
+        if (e2 <= dx) {
+            err += dx;
+            y1 += sy;
+        }
+    }
+}
+
+void Display::DrawRectWithColor(const Rect& rect, PixelColor color) {
+    if (rect.w <= 0 || rect.h <= 0) {
+        return;
+    }
+    DrawLineWithColor(rect.x, rect.y, rect.x + rect.w - 1, rect.y, color);
+    DrawLineWithColor(rect.x, rect.y, rect.x, rect.y + rect.h - 1, color);
+    DrawLineWithColor(rect.x + rect.w - 1, rect.y, rect.x + rect.w - 1, rect.y + rect.h - 1, color);
+    DrawLineWithColor(rect.x, rect.y + rect.h - 1, rect.x + rect.w - 1, rect.y + rect.h - 1, color);
+}
+
+void Display::FillRectWithColor(const Rect& rect, PixelColor color) {
     if (rect.w <= 0 || rect.h <= 0) {
         return;
     }
     for (int y = rect.y; y < rect.y + rect.h; ++y) {
         for (int x = rect.x; x < rect.x + rect.w; ++x) {
-            SetPixel(x, y, true);
+            SetPixel(x, y, color == PixelColor::Black);
         }
+    }
+}
+
+void Display::FillRoundedRect(const Rect& rect, int radius, PixelColor color) {
+    if (rect.w <= 0 || rect.h <= 0) {
+        return;
+    }
+
+    const int safe_radius = std::max(0, std::min(radius, std::min(rect.w, rect.h) / 2));
+    for (int y = rect.y; y < rect.y + rect.h; ++y) {
+        for (int x = rect.x; x < rect.x + rect.w; ++x) {
+            int corner_dx = 0;
+            if (x < rect.x + safe_radius) {
+                corner_dx = rect.x + safe_radius - x;
+            } else if (x >= rect.x + rect.w - safe_radius) {
+                corner_dx = x - (rect.x + rect.w - safe_radius - 1);
+            }
+
+            int corner_dy = 0;
+            if (y < rect.y + safe_radius) {
+                corner_dy = rect.y + safe_radius - y;
+            } else if (y >= rect.y + rect.h - safe_radius) {
+                corner_dy = y - (rect.y + rect.h - safe_radius - 1);
+            }
+
+            if (corner_dx > 0 && corner_dy > 0 &&
+                (corner_dx * corner_dx + corner_dy * corner_dy) > safe_radius * safe_radius) {
+                continue;
+            }
+            SetPixel(x, y, color == PixelColor::Black);
+        }
+    }
+}
+
+void Display::FillCircle(int center_x, int center_y, int radius, PixelColor color) {
+    if (radius <= 0) {
+        return;
+    }
+
+    const int radius_squared = radius * radius;
+    for (int y = center_y - radius; y <= center_y + radius; ++y) {
+        for (int x = center_x - radius; x <= center_x + radius; ++x) {
+            const int dx = x - center_x;
+            const int dy = y - center_y;
+            if ((dx * dx) + (dy * dy) <= radius_squared) {
+                SetPixel(x, y, color == PixelColor::Black);
+            }
+        }
+    }
+}
+
+void Display::DrawIconMask(const uint16_t* rows, int row_count, const Rect& rect, PixelColor color) {
+    if (rows == nullptr || row_count <= 0 || rect.w <= 0 || rect.h <= 0) {
+        return;
+    }
+
+    const int draw_size = std::min(rect.w, rect.h);
+    const int origin_x = rect.x + ((rect.w - draw_size) / 2);
+    const int origin_y = rect.y + ((rect.h - draw_size) / 2);
+    for (int y = 0; y < draw_size; ++y) {
+        const int source_y = (y * row_count) / draw_size;
+        const uint16_t row = rows[source_y];
+        for (int x = 0; x < draw_size; ++x) {
+            const int source_x = (x * 16) / draw_size;
+            if ((row & (1U << (15 - source_x))) != 0) {
+                SetPixel(origin_x + x, origin_y + y, color == PixelColor::Black);
+            }
+        }
+    }
+}
+
+void Display::DrawMenuIcon(SplitViewMenuIcon icon, const Rect& rect, PixelColor color) {
+    switch (icon) {
+        case SplitViewMenuIcon::Wifi:
+            DrawIconMask(kWifiIconRows, static_cast<int>(std::size(kWifiIconRows)), rect, color);
+            break;
+        case SplitViewMenuIcon::Bluetooth:
+            DrawIconMask(kBluetoothIconRows, static_cast<int>(std::size(kBluetoothIconRows)), rect, color);
+            break;
+        case SplitViewMenuIcon::Sound:
+            DrawIconMask(kSoundIconRows, static_cast<int>(std::size(kSoundIconRows)), rect, color);
+            break;
+        case SplitViewMenuIcon::Storage:
+            DrawIconMask(kStorageIconRows, static_cast<int>(std::size(kStorageIconRows)), rect, color);
+            break;
+        case SplitViewMenuIcon::Device:
+            DrawIconMask(kDeviceIconRows, static_cast<int>(std::size(kDeviceIconRows)), rect, color);
+            break;
+        case SplitViewMenuIcon::None:
+        default:
+            break;
     }
 }
 
@@ -374,26 +611,42 @@ void Display::RenderSplitView(const SplitViewModel& model, int origin_y) {
         available_height
     };
 
-    DrawRect(menu_rect);
-    DrawRect(detail_rect);
     DrawLine(menu_rect.x + menu_rect.w + (kSplitViewGap / 2),
              origin_y,
              menu_rect.x + menu_rect.w + (kSplitViewGap / 2),
              origin_y + available_height);
 
-    int menu_cursor_y = menu_rect.y + 6;
+    int menu_cursor_y = menu_rect.y + 2;
     for (const SplitViewMenuItem& item : model.menu_items) {
         if (menu_cursor_y + kSplitViewMenuRowHeight > menu_rect.y + menu_rect.h - 4) {
             break;
         }
 
-        const Rect item_rect = {menu_rect.x + 4, menu_cursor_y, menu_rect.w - 8, kSplitViewMenuRowHeight};
+        const Rect item_rect = {menu_rect.x + 2, menu_cursor_y, menu_rect.w - 4, kSplitViewMenuRowHeight};
+        const PixelColor foreground_color = item.selected ? PixelColor::White : PixelColor::Black;
         if (item.selected) {
-            DrawRect(item_rect);
+            FillRoundedRect(item_rect, kSplitViewMenuRadius, PixelColor::Black);
         }
-        const std::string fitted_text = FitText(item.text, item_rect.w - 10);
-        DrawText({item_rect.x + 5, item_rect.y, item_rect.w - 10, item_rect.h}, fitted_text.c_str(), TextAlign::Left);
-        menu_cursor_y += kSplitViewMenuRowHeight + 6;
+        const Rect icon_rect = {
+            item_rect.x + 8,
+            item_rect.y + ((item_rect.h - kSplitViewMenuIconSize) / 2),
+            kSplitViewMenuIconSize,
+            kSplitViewMenuIconSize
+        };
+        DrawMenuIcon(item.icon, icon_rect, foreground_color);
+        const int text_x = icon_rect.x + icon_rect.w + 8;
+        const std::string fitted_text = FitText(item.text, item_rect.x + item_rect.w - text_x - 6);
+        const Rect text_rect = {
+            text_x,
+            item_rect.y + ((item_rect.h - kSplitViewMenuTextHeight) / 2),
+            item_rect.x + item_rect.w - text_x - 6,
+            kSplitViewMenuTextHeight
+        };
+        DrawText(text_rect,
+                 fitted_text.c_str(),
+                 TextAlign::Left,
+                 foreground_color);
+        menu_cursor_y += kSplitViewMenuRowHeight + 4;
     }
 
     int detail_cursor_y = detail_rect.y + kSplitViewDetailPadding;

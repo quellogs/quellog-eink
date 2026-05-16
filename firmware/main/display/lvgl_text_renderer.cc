@@ -157,7 +157,7 @@ std::string FitText(const lv_font_t* font, const std::string& text, int max_widt
     return result + suffix;
 }
 
-void DrawText(Display* display, const lv_font_t* font, int start_x, int start_y, int max_width, const char* text) {
+void DrawText(Display* display, const lv_font_t* font, int start_x, int start_y, int max_width, const char* text, bool black) {
     if (display == nullptr || font == nullptr || text == nullptr) {
         return;
     }
@@ -208,7 +208,7 @@ void DrawText(Display* display, const lv_font_t* font, int start_x, int start_y,
                 if (pixel_x < 0 || pixel_x >= display->width() || pixel_y < 0 || pixel_y >= display->height()) {
                     continue;
                 }
-                display->SetPixel(pixel_x, pixel_y, true);
+                display->SetPixel(pixel_x, pixel_y, black);
             }
         }
 

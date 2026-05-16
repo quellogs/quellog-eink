@@ -23,6 +23,20 @@ enum class TextAlign {
     Right
 };
 
+enum class PixelColor {
+    Black = 0,
+    White,
+};
+
+enum class SplitViewMenuIcon {
+    None = 0,
+    Wifi,
+    Bluetooth,
+    Sound,
+    Storage,
+    Device,
+};
+
 struct TextBlockModel {
     std::string text;
     TextAlign align = TextAlign::Left;
@@ -31,6 +45,7 @@ struct TextBlockModel {
 struct SplitViewMenuItem {
     std::string text;
     bool selected = false;
+    SplitViewMenuIcon icon = SplitViewMenuIcon::None;
 };
 
 struct SplitViewModel {
@@ -90,6 +105,7 @@ public:
     virtual void BeginPage();
     virtual void EndPage();
     virtual void DrawText(const Rect& rect, const char* text, TextAlign align = TextAlign::Left);
+    virtual void DrawText(const Rect& rect, const char* text, TextAlign align, PixelColor color);
     virtual void DrawLine(int x1, int y1, int x2, int y2);
     virtual void DrawRect(const Rect& rect);
     virtual void FillRect(const Rect& rect);
@@ -103,6 +119,15 @@ protected:
     int MeasureTextWidth(const char* text) const;
     std::string FitText(const std::string& text, int max_width, const char* ellipsis = "...") const;
     void DrawTextWithFont(const Rect& rect, const lv_font_t* font, const char* text, TextAlign align = TextAlign::Left);
+    void DrawTextWithFont(
+        const Rect& rect, const lv_font_t* font, const char* text, TextAlign align, PixelColor color);
+    void DrawLineWithColor(int x1, int y1, int x2, int y2, PixelColor color);
+    void DrawRectWithColor(const Rect& rect, PixelColor color);
+    void FillRectWithColor(const Rect& rect, PixelColor color);
+    void FillRoundedRect(const Rect& rect, int radius, PixelColor color);
+    void FillCircle(int center_x, int center_y, int radius, PixelColor color);
+    void DrawIconMask(const uint16_t* rows, int row_count, const Rect& rect, PixelColor color);
+    void DrawMenuIcon(SplitViewMenuIcon icon, const Rect& rect, PixelColor color);
     void DrawHorizontalDashes(int x, int y, int width, int dash_length, int gap_length);
     void DrawArrowLine(int x1, int y1, int x2, int y2, int arrow_size);
     void FillRectPattern(const Rect& rect, int step_x, int step_y);

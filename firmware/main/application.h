@@ -42,7 +42,6 @@ private:
     void SeedMockData();
     AppContext BuildContext() const;
     TopStatusBarState BuildTopStatusBarState(const AppContext& context) const;
-    std::string BuildRefreshLabel() const;
     bool ShouldAutoRefresh(int64_t now_us) const;
     void HandleNetworkEvent(NetworkEvent event, const std::string& data);
     void UpdateDeviceState();
@@ -53,7 +52,6 @@ private:
     std::atomic<DeviceState> state_{kDeviceStateUnknown};
     std::atomic<bool> network_state_dirty_{false};
     int current_page_index_ = 0;
-    RefreshPolicy refresh_policy_ = RefreshPolicy::Manual;
     std::string device_alias_ = "Quellog E-Ink";
     DashboardData dashboard_;
     int64_t last_refresh_us_ = 0;

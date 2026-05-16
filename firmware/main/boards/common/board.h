@@ -2,6 +2,7 @@
 #define QUELLOG_BOARD_H_
 
 #include <functional>
+#include <cstdint>
 #include <string>
 
 class Display;
@@ -16,6 +17,15 @@ enum class InputKey {
 
 struct InputEvent {
     InputKey key = InputKey::None;
+};
+
+struct BoardStorageInfo {
+    bool available = false;
+    uint32_t flash_total_kb = 0;
+    uint32_t app_total_kb = 0;
+    uint32_t app_used_kb = 0;
+    uint32_t nvs_total_kb = 0;
+    uint32_t nvs_used_kb = 0;
 };
 
 enum class NetworkState {
@@ -68,6 +78,8 @@ public:
     }
     virtual std::string GetSystemInfoJson();
     virtual void StartNetwork() {}
+    virtual void StopNetwork() {}
+    virtual bool IsWifiEnabled() const { return false; }
     virtual void EnterWifiConfigMode() {}
     virtual bool IsWifiConnected() const { return false; }
     virtual bool IsWifiConfigMode() const { return false; }
@@ -77,6 +89,15 @@ public:
     virtual std::string GetWifiConfigApSsid() const { return ""; }
     virtual std::string GetWifiConfigApUrl() const { return ""; }
     virtual void SetNetworkEventCallback(NetworkEventCallback callback) { (void)callback; }
+    virtual bool IsBluetoothAvailable() const { return false; }
+    virtual bool IsBluetoothEnabled() const { return false; }
+    virtual bool SetBluetoothEnabled(bool enabled) {
+        (void)enabled;
+        return false;
+    }
+    virtual int GetVolumePercent() const { return 0; }
+    virtual void SetVolumePercent(int percent) { (void)percent; }
+    virtual BoardStorageInfo GetStorageInfo() const { return {}; }
 
 protected:
     Board();

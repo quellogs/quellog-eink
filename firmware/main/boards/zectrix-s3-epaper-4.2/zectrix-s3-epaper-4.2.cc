@@ -6,10 +6,13 @@
 #include <driver/gpio.h>
 #include <driver/ledc.h>
 #include <driver/spi_master.h>
+#include <esp_flash.h>
 #include <esp_log.h>
+#include <esp_partition.h>
 #include <esp_timer.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
+#include <nvs.h>
 
 #include <algorithm>
 #include <atomic>
@@ -24,6 +27,7 @@
 #include "charge_status.h"
 #include "config.h"
 #include "display/display.h"
+#include "settings.h"
 #include "ssid_manager.h"
 #include "wifi_manager.h"
 
@@ -39,6 +43,7 @@ constexpr int kChargeLedPwmFrequencyHz = 5000;
 constexpr int kChargeLedBreathPeriodMs = 2400;
 constexpr int kChargeLedBreathStepMs = 40;
 constexpr int kChargeLedIdleDelayMs = 500;
+constexpr int kDefaultVolumePercent = 50;
 
 class ZectrixEpaperDisplay : public Display {
 public:
@@ -458,6 +463,7 @@ struct ButtonState {
 class ZectrixBoard : public Board {
 public:
     ZectrixBoard() {
+        LoadLocalSettings();
         InitializeBatteryPower();
         InitializeChargeStatus();
         InitializeChargeLed();
@@ -571,6 +577,20 @@ public:
         network_started_ = true;
     }
 
+    void StopNetwork() override {
+        if (!network_started_) {
+            return;
+        }
+        WifiManager::GetInstance().StopConfigAp();
+        WifiManager::GetInstance().StopStation();
+        network_state_.store(NetworkState::Disconnected, std::memory_order_release);
+        network_started_ = false;
+    }
+
+    bool IsWifiEnabled() const override {
+        return network_started_;
+    }
+
     bool PollInput(InputEvent& event) override {
         const int64_t now_us = esp_timer_get_time();
         for (ButtonState& button : buttons_) {
@@ -666,9 +686,75 @@ public:
         network_event_callback_ = std::move(callback);
     }
 
+    bool IsBluetoothAvailable() const override {
+#if CONFIG_BT_ENABLED
+        return true;
+#else
+        return false;
+#endif
+    }
+
+    bool IsBluetoothEnabled() const override {
+        return bluetooth_enabled_;
+    }
+
+    bool SetBluetoothEnabled(bool enabled) override {
+        if (!IsBluetoothAvailable()) {
+            bluetooth_enabled_ = false;
+            return false;
+        }
+        bluetooth_enabled_ = enabled;
+        return true;
+    }
+
+    int GetVolumePercent() const override {
+        return volume_percent_;
+    }
+
+    void SetVolumePercent(int percent) override {
+        volume_percent_ = std::clamp(percent, 0, 100);
+        Settings settings("app", true);
+        settings.SetInt("volume_percent", volume_percent_);
+    }
+
+    BoardStorageInfo GetStorageInfo() const override {
+        BoardStorageInfo info;
+        uint32_t flash_size = 0;
+        if (esp_flash_get_size(nullptr, &flash_size) == ESP_OK) {
+            info.flash_total_kb = flash_size / 1024U;
+            info.available = true;
+        }
+
+        const esp_partition_t* app_partition = esp_partition_find_first(
+            ESP_PARTITION_TYPE_APP, ESP_PARTITION_SUBTYPE_ANY, nullptr);
+        if (app_partition != nullptr) {
+            info.app_total_kb = app_partition->size / 1024U;
+            info.app_used_kb = info.app_total_kb;
+            info.available = true;
+        }
+
+        const esp_partition_t* nvs_partition = esp_partition_find_first(
+            ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_DATA_NVS, nullptr);
+        if (nvs_partition != nullptr) {
+            info.nvs_total_kb = nvs_partition->size / 1024U;
+            nvs_stats_t stats = {};
+            if (nvs_get_stats("nvs", &stats) == ESP_OK) {
+                info.nvs_used_kb = static_cast<uint32_t>((stats.used_entries * 32U + 1023U) / 1024U);
+            }
+            info.available = true;
+        }
+        return info;
+    }
+
 private:
     static int64_t GetNowMs() {
         return esp_timer_get_time() / 1000;
+    }
+
+    void LoadLocalSettings() {
+        Settings settings("app");
+        volume_percent_ = std::clamp(
+            static_cast<int>(settings.GetInt("volume_percent", kDefaultVolumePercent)), 0, 100);
     }
 
     void InitializeBatteryPower() {
@@ -882,6 +968,8 @@ private:
     std::atomic<NetworkState> network_state_{NetworkState::Unknown};
     NetworkEventCallback network_event_callback_;
     bool network_started_ = false;
+    bool bluetooth_enabled_ = false;
+    int volume_percent_ = kDefaultVolumePercent;
     bool settings_combo_dispatched_ = false;
 };
 

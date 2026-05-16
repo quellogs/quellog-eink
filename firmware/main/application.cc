@@ -1,7 +1,5 @@
 #include "application.h"
 
-#include "sdkconfig.h"
-
 #include <esp_log.h>
 #include <esp_timer.h>
 #include <freertos/FreeRTOS.h>
@@ -16,14 +14,13 @@ namespace {
 constexpr char kTag[] = "Application";
 constexpr int kStatsPageIndex = 0;
 constexpr int kSettingsPageOffsetFromEnd = 1;
-constexpr int kSettingsItemRefreshPolicy = 0;
-constexpr int kSettingsItemWifiReconfigure = 1;
-constexpr int kSettingsItemGoHome = 2;
-constexpr int kSettingsItemCount = 3;
-
-int64_t SecondsToMicros(int seconds) {
-    return static_cast<int64_t>(seconds) * 1000000LL;
-}
+constexpr int kSettingsItemWifi = 0;
+constexpr int kSettingsItemBluetooth = 1;
+constexpr int kSettingsItemSound = 2;
+constexpr int kSettingsItemStorage = 3;
+constexpr int kSettingsItemDeviceInfo = 4;
+constexpr int kSettingsItemCount = 5;
+constexpr int kVolumeStepPercent = 10;
 
 }  // namespace
 
@@ -185,31 +182,42 @@ void Application::TriggerRefresh() {
 
 void Application::ExecuteSettingsItem() {
     switch (settings_selected_item_) {
-        case kSettingsItemRefreshPolicy:
-            refresh_policy_ = refresh_policy_ == RefreshPolicy::Manual
-                                  ? RefreshPolicy::Timed
-                                  : RefreshPolicy::Manual;
-            SaveSettings();
-            if (display_ != nullptr) {
-                display_->ShowNotification(refresh_policy_ == RefreshPolicy::Timed
-                                               ? "已切换为定时刷新"
-                                               : "已切换为手动刷新");
+        case kSettingsItemWifi:
+            if (board_.IsWifiEnabled()) {
+                board_.StopNetwork();
+                network_state_dirty_.store(true, std::memory_order_release);
+                if (display_ != nullptr) {
+                    display_->ShowNotification("WiFi 已关闭");
+                }
+            } else {
+                board_.StartNetwork();
+                network_state_dirty_.store(true, std::memory_order_release);
+                if (display_ != nullptr) {
+                    display_->ShowNotification("WiFi 已开启");
+                }
             }
             RenderCurrentPage(true);
             break;
-        case kSettingsItemWifiReconfigure:
-            board_.EnterWifiConfigMode();
-            network_state_dirty_.store(true, std::memory_order_release);
+        case kSettingsItemBluetooth: {
+            const bool next_enabled = !board_.IsBluetoothEnabled();
+            const bool ok = board_.SetBluetoothEnabled(next_enabled);
             if (display_ != nullptr) {
-                display_->ShowNotification("已进入配网模式");
+                display_->ShowNotification(ok ? (next_enabled ? "蓝牙已开启" : "蓝牙已关闭") : "蓝牙不可用");
             }
+            RenderCurrentPage(true);
             break;
-        case kSettingsItemGoHome:
-            current_page_index_ = kStatsPageIndex;
-            SaveSettings();
-            UpdateDeviceState();
-            RenderCurrentPage(false);
+        }
+        case kSettingsItemSound: {
+            const int next_volume = (board_.GetVolumePercent() + kVolumeStepPercent) % (100 + kVolumeStepPercent);
+            board_.SetVolumePercent(next_volume);
+            if (display_ != nullptr) {
+                display_->ShowNotification(next_volume == 0 ? "已静音" : "音量已调整");
+            }
+            RenderCurrentPage(true);
             break;
+        }
+        case kSettingsItemStorage:
+        case kSettingsItemDeviceInfo:
         default:
             break;
     }
@@ -223,7 +231,6 @@ void Application::LoadSettings() {
     Settings settings("app", true);
     const int saved_page_index = settings.GetInt("page_index", kStatsPageIndex);
     current_page_index_ = NormalizeSavedPageIndex(saved_page_index);
-    refresh_policy_ = settings.GetInt("refresh_policy", 0) == 1 ? RefreshPolicy::Timed : RefreshPolicy::Manual;
     device_alias_ = settings.GetString("device_alias", "泉流迹墨水屏");
     if (current_page_index_ != saved_page_index) {
         SaveSettings();
@@ -233,7 +240,6 @@ void Application::LoadSettings() {
 void Application::SaveSettings() {
     Settings settings("app", true);
     settings.SetInt("page_index", current_page_index_);
-    settings.SetInt("refresh_policy", refresh_policy_ == RefreshPolicy::Timed ? 1 : 0);
     settings.SetString("device_alias", device_alias_);
 }
 
@@ -283,20 +289,29 @@ AppContext Application::BuildContext() const {
     context.device_state = state_.load(std::memory_order_acquire);
     context.page_index = current_page_index_;
     context.page_count = pages_.Count();
-    context.refresh_policy = refresh_policy_;
     context.device_alias = device_alias_;
     context.board_type = board_.GetBoardType();
     context.device_uuid = board_.GetUuid();
-    context.last_refresh_label = BuildRefreshLabel();
     context.wifi_connected = board_.IsWifiConnected();
     context.wifi_connecting = context.device_state == kDeviceStateWifiConnecting;
     context.wifi_config_mode = board_.IsWifiConfigMode();
+    context.wifi_enabled = board_.IsWifiEnabled();
+    context.bluetooth_available = board_.IsBluetoothAvailable();
+    context.bluetooth_enabled = board_.IsBluetoothEnabled();
+    context.volume_percent = board_.GetVolumePercent();
     context.wifi_ssid = board_.GetWifiSsid();
     context.wifi_ip = board_.GetWifiIpAddress();
     context.wifi_ap_ssid = board_.GetWifiConfigApSsid();
     context.wifi_ap_url = board_.GetWifiConfigApUrl();
     context.settings_selected_item = settings_selected_item_;
     context.settings_item_count = kSettingsItemCount;
+    const BoardStorageInfo storage = board_.GetStorageInfo();
+    context.storage.available = storage.available;
+    context.storage.flash_total_kb = storage.flash_total_kb;
+    context.storage.app_total_kb = storage.app_total_kb;
+    context.storage.app_used_kb = storage.app_used_kb;
+    context.storage.nvs_total_kb = storage.nvs_total_kb;
+    context.storage.nvs_used_kb = storage.nvs_used_kb;
     context.dashboard = dashboard_;
 
     int battery_level = 0;
@@ -322,16 +337,9 @@ TopStatusBarState Application::BuildTopStatusBarState(const AppContext& context)
     return state;
 }
 
-std::string Application::BuildRefreshLabel() const {
-    const int64_t age_sec = (esp_timer_get_time() - last_refresh_us_) / 1000000LL;
-    return std::to_string(age_sec) + " 秒前";
-}
-
 bool Application::ShouldAutoRefresh(int64_t now_us) const {
-    if (refresh_policy_ != RefreshPolicy::Timed) {
-        return false;
-    }
-    return (now_us - last_refresh_us_) >= SecondsToMicros(CONFIG_QUELLOG_AUTO_REFRESH_SECONDS);
+    (void)now_us;
+    return false;
 }
 
 void Application::HandleNetworkEvent(NetworkEvent event, const std::string& data) {

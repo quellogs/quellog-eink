@@ -7,11 +7,6 @@
 
 #include "device_state.h"
 
-enum class RefreshPolicy {
-    Manual = 0,
-    Timed = 1
-};
-
 struct RecordSummary {
     std::string title;
     std::string category;
@@ -33,6 +28,15 @@ struct DashboardData {
     std::vector<CategorySummary> categories;
 };
 
+struct StorageInfo {
+    bool available = false;
+    uint32_t flash_total_kb = 0;
+    uint32_t app_total_kb = 0;
+    uint32_t app_used_kb = 0;
+    uint32_t nvs_total_kb = 0;
+    uint32_t nvs_used_kb = 0;
+};
+
 struct AppContext {
     DeviceState device_state = kDeviceStateUnknown;
     int page_index = 0;
@@ -43,18 +47,21 @@ struct AppContext {
     bool wifi_connected = false;
     bool wifi_connecting = false;
     bool wifi_config_mode = false;
-    RefreshPolicy refresh_policy = RefreshPolicy::Manual;
+    bool wifi_enabled = false;
+    bool bluetooth_available = false;
+    bool bluetooth_enabled = false;
+    int volume_percent = 0;
     std::string page_title;
     std::string device_alias;
     std::string board_type;
     std::string device_uuid;
-    std::string last_refresh_label;
     std::string wifi_ssid;
     std::string wifi_ip;
     std::string wifi_ap_ssid;
     std::string wifi_ap_url;
     int settings_selected_item = 0;
     int settings_item_count = 0;
+    StorageInfo storage;
     DashboardData dashboard;
 };
 

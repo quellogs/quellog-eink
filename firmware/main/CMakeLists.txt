@@ -27,10 +27,12 @@ idf_component_register(
         driver
         esp_adc
         esp_app_format
+        esp_partition
         esp_timer
         lvgl
         nvs_flash
         quellog_wifi
+        spi_flash
 )
 
 target_compile_definitions(
