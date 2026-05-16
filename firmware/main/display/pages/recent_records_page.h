@@ -6,7 +6,7 @@
 class RecentRecordsPage : public UiPage {
 public:
     const char* GetId() const override { return "recent_records"; }
-    const char* GetTitle() const override { return "Recent Records"; }
+    const char* GetTitle() const override { return "最近记录"; }
     PageModel BuildModel(const AppContext& context) const override;
 };
 

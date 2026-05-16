@@ -39,6 +39,7 @@ private:
     void SaveSettings();
     void SeedMockData();
     AppContext BuildContext() const;
+    TopStatusBarState BuildTopStatusBarState(const AppContext& context) const;
     std::string BuildRefreshLabel() const;
     bool ShouldAutoRefresh(int64_t now_us) const;
     void HandleNetworkEvent(NetworkEvent event, const std::string& data);

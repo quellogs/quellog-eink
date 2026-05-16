@@ -47,7 +47,6 @@ int64_t GetMaxAmountCents(const std::vector<BarChartItem>& items) {
 
 PageModel StatsPage::BuildModel(const AppContext& context) const {
     PageModel model;
-    model.title = "泉流迹 / 统计";
     if (context.dashboard.categories.empty()) {
         model.text_blocks.push_back({"暂无分类统计。"});
     } else {
@@ -63,6 +62,5 @@ PageModel StatsPage::BuildModel(const AppContext& context) const {
             model.text_blocks.push_back({category.category + "  " + FormatAmount(category.amount_cents)});
         }
     }
-    model.footer = "上下翻页";
     return model;
 }

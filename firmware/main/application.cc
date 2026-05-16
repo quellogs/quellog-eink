@@ -127,8 +127,9 @@ void Application::RenderCurrentPage(bool full_refresh) {
         display_->RequestPartialRefresh();
     }
 
-    const PageModel model = page->BuildModel(BuildContext());
-    display_->RenderPage(model);
+    const AppContext context = BuildContext();
+    const PageModel model = page->BuildModel(context);
+    display_->RenderPage(model, BuildTopStatusBarState(context));
 }
 
 void Application::NextPage() {
@@ -254,12 +255,26 @@ AppContext Application::BuildContext() const {
     context.dashboard = dashboard_;
 
     int battery_level = 0;
-    context.battery_known = board_.GetBatteryLevel(battery_level);
+    bool battery_charging = false;
+    bool battery_external_power = false;
+    context.battery_known = board_.GetBatteryLevel(battery_level, battery_charging, battery_external_power);
     context.battery_level = battery_level;
+    context.battery_charging = battery_charging;
 
     const UiPage* page = pages_.Get(current_page_index_);
     context.page_title = page == nullptr ? "" : page->GetTitle();
     return context;
+}
+
+TopStatusBarState Application::BuildTopStatusBarState(const AppContext& context) const {
+    TopStatusBarState state;
+    state.title = context.page_title;
+    state.wifi_visible = context.wifi_connected;
+    state.hotspot_visible = context.wifi_config_mode;
+    state.battery_visible = context.battery_known;
+    state.battery_level = context.battery_level;
+    state.battery_charging = context.battery_charging;
+    return state;
 }
 
 std::string Application::BuildRefreshLabel() const {

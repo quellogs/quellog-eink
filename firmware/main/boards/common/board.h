@@ -54,7 +54,17 @@ public:
     virtual std::string GetUuid() const { return uuid_; }
     virtual Display* GetDisplay();
     virtual bool PollInput(InputEvent& event) = 0;
-    virtual bool GetBatteryLevel(int& level) { (void)level; return false; }
+    virtual bool GetBatteryLevel(int& level) {
+        bool charging = false;
+        bool external_power = false;
+        return GetBatteryLevel(level, charging, external_power);
+    }
+    virtual bool GetBatteryLevel(int& level, bool& charging, bool& external_power) {
+        (void)level;
+        (void)charging;
+        (void)external_power;
+        return false;
+    }
     virtual std::string GetSystemInfoJson();
     virtual void StartNetwork() {}
     virtual void EnterWifiConfigMode() {}

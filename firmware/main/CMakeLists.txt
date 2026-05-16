@@ -3,9 +3,11 @@ set(SOURCES
     "application.cc"
     "settings.cc"
     "boards/common/board.cc"
+    "boards/zectrix-s3-epaper-4.2/charge_status.cc"
     "boards/zectrix-s3-epaper-4.2/zectrix-s3-epaper-4.2.cc"
     "display/display.cc"
     "display/lvgl_text_renderer.cc"
+    "display/top_status_bar.cc"
     "display/ui_page_registry.cc"
     "display/fonts/SourceHanSansSC_Medium_slim.c"
     "display/fonts/SourceHanSansSC_Regular_slim.c"
@@ -24,6 +26,7 @@ idf_component_register(
         "display/pages"
     REQUIRES
         driver
+        esp_adc
         esp_app_format
         esp_timer
         lvgl

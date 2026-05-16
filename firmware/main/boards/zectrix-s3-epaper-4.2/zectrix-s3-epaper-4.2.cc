@@ -1,5 +1,8 @@
 #include "sdkconfig.h"
 
+#include <esp_adc/adc_cali.h>
+#include <esp_adc/adc_cali_scheme.h>
+#include <esp_adc/adc_oneshot.h>
 #include <driver/gpio.h>
 #include <driver/spi_master.h>
 #include <esp_log.h>
@@ -11,10 +14,12 @@
 #include <atomic>
 #include <array>
 #include <cassert>
+#include <cstdint>
 #include <cstring>
 #include <vector>
 
 #include "board.h"
+#include "charge_status.h"
 #include "config.h"
 #include "display/display.h"
 #include "ssid_manager.h"
@@ -442,6 +447,8 @@ struct ButtonState {
 class ZectrixBoard : public Board {
 public:
     ZectrixBoard() {
+        InitializeBatteryPower();
+        InitializeChargeStatus();
         ConfigureButton(buttons_[0], static_cast<gpio_num_t>(CONFIG_QUELLOG_BUTTON_UP_GPIO), InputKey::Up);
         ConfigureButton(buttons_[1], static_cast<gpio_num_t>(CONFIG_QUELLOG_BUTTON_DOWN_GPIO), InputKey::Down);
         ConfigureButton(buttons_[2], static_cast<gpio_num_t>(CONFIG_QUELLOG_BUTTON_CONFIRM_GPIO), InputKey::Confirm);
@@ -453,6 +460,19 @@ public:
 
     Display* GetDisplay() override {
         return &display_;
+    }
+
+    bool GetBatteryLevel(int& level, bool& charging, bool& external_power) override {
+        charge_status_.Tick(GetNowMs());
+        const ChargeStatus::Snapshot snapshot = charge_status_.Get();
+        charging = snapshot.charging;
+        external_power = snapshot.power_present;
+
+        uint16_t voltage_mv = 0;
+        uint8_t percent = 0;
+        const bool ok = ReadBatteryStatus(voltage_mv, percent);
+        level = static_cast<int>(percent);
+        return ok;
     }
 
     void StartNetwork() override {
@@ -601,6 +621,94 @@ public:
     }
 
 private:
+    static int64_t GetNowMs() {
+        return esp_timer_get_time() / 1000;
+    }
+
+    void InitializeBatteryPower() {
+        gpio_config_t cfg = {};
+        cfg.pin_bit_mask = 1ULL << QUELLOG_BATTERY_POWER_GPIO;
+        cfg.mode = GPIO_MODE_OUTPUT;
+        cfg.pull_up_en = GPIO_PULLUP_DISABLE;
+        cfg.pull_down_en = GPIO_PULLDOWN_DISABLE;
+        cfg.intr_type = GPIO_INTR_DISABLE;
+        ESP_ERROR_CHECK(gpio_config(&cfg));
+        gpio_set_level(QUELLOG_BATTERY_POWER_GPIO, 1);
+
+        if (QUELLOG_BATTERY_POWER_READY_GPIO != GPIO_NUM_NC) {
+            gpio_config_t ready_cfg = {};
+            ready_cfg.pin_bit_mask = 1ULL << QUELLOG_BATTERY_POWER_READY_GPIO;
+            ready_cfg.mode = GPIO_MODE_INPUT;
+            ready_cfg.pull_up_en = GPIO_PULLUP_DISABLE;
+            ready_cfg.pull_down_en = GPIO_PULLDOWN_DISABLE;
+            ready_cfg.intr_type = GPIO_INTR_DISABLE;
+            ESP_ERROR_CHECK(gpio_config(&ready_cfg));
+        }
+    }
+
+    void InitializeChargeStatus() {
+        charge_status_.Init(QUELLOG_CHARGE_DETECT_GPIO, QUELLOG_CHARGE_FULL_GPIO, GetNowMs());
+    }
+
+    uint16_t ReadBatteryVoltage() {
+        static bool initialized = false;
+        static adc_oneshot_unit_handle_t adc_handle = nullptr;
+        static adc_cali_handle_t cali_handle = nullptr;
+
+        if (!initialized) {
+            adc_oneshot_unit_init_cfg_t init_config = {};
+            init_config.unit_id = ADC_UNIT_1;
+            init_config.ulp_mode = ADC_ULP_MODE_DISABLE;
+            ESP_ERROR_CHECK(adc_oneshot_new_unit(&init_config, &adc_handle));
+
+            adc_oneshot_chan_cfg_t channel_config = {};
+            channel_config.atten = ADC_ATTEN_DB_12;
+            channel_config.bitwidth = ADC_BITWIDTH_12;
+            ESP_ERROR_CHECK(adc_oneshot_config_channel(adc_handle, QUELLOG_BATTERY_ADC_CHANNEL, &channel_config));
+
+            adc_cali_curve_fitting_config_t cali_config = {};
+            cali_config.unit_id = ADC_UNIT_1;
+            cali_config.chan = QUELLOG_BATTERY_ADC_CHANNEL;
+            cali_config.atten = ADC_ATTEN_DB_12;
+            cali_config.bitwidth = ADC_BITWIDTH_12;
+            if (adc_cali_create_scheme_curve_fitting(&cali_config, &cali_handle) == ESP_OK) {
+                initialized = true;
+            }
+        }
+
+        if (!initialized) {
+            return 0;
+        }
+
+        int raw_value = 0;
+        int raw_voltage = 0;
+        ESP_ERROR_CHECK(adc_oneshot_read(adc_handle, QUELLOG_BATTERY_ADC_CHANNEL, &raw_value));
+        ESP_ERROR_CHECK(adc_cali_raw_to_voltage(cali_handle, raw_value, &raw_voltage));
+        return static_cast<uint16_t>(raw_voltage * 2);
+    }
+
+    bool ReadBatteryStatus(uint16_t& voltage_mv, uint8_t& percent) {
+        int voltage_sum = 0;
+        for (int i = 0; i < 10; ++i) {
+            voltage_sum += ReadBatteryVoltage();
+        }
+
+        const int average_voltage = voltage_sum / 10;
+        if (average_voltage <= 0) {
+            voltage_mv = 0;
+            percent = 0;
+            return false;
+        }
+
+        int computed_percent =
+            (-1 * average_voltage * average_voltage + 9016 * average_voltage - 19189000) / 10000;
+        computed_percent = std::clamp(computed_percent, 0, 100);
+
+        voltage_mv = static_cast<uint16_t>(average_voltage);
+        percent = static_cast<uint8_t>(computed_percent);
+        return true;
+    }
+
     void ConfigureButton(ButtonState& state, gpio_num_t gpio, InputKey key) {
         state.gpio = gpio;
         state.key = key;
@@ -621,6 +729,7 @@ private:
 
     ZectrixEpaperDisplay display_;
     std::array<ButtonState, 3> buttons_ = {};
+    ChargeStatus charge_status_;
     std::atomic<NetworkState> network_state_{NetworkState::Unknown};
     NetworkEventCallback network_event_callback_;
     bool network_started_ = false;

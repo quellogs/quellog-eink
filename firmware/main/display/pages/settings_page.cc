@@ -6,7 +6,6 @@ PageModel SettingsPage::BuildModel(const AppContext& context) const {
     };
 
     PageModel model;
-    model.title = "泉流迹 / 设置";
     model.text_blocks.push_back({std::string(selected_prefix(0)) + "刷新模式  " +
                                  std::string(context.refresh_policy == RefreshPolicy::Timed ? "定时" : "手动")});
     model.text_blocks.push_back({std::string(selected_prefix(1)) + "重新配网"});
@@ -31,9 +30,11 @@ PageModel SettingsPage::BuildModel(const AppContext& context) const {
     model.text_blocks.push_back({"板型  " + context.board_type});
     if (context.battery_known) {
         model.text_blocks.push_back({"电量  " + std::to_string(context.battery_level) + "%"});
+        if (context.battery_charging) {
+            model.text_blocks.push_back({"电池状态  充电中"});
+        }
     } else {
         model.text_blocks.push_back({"电量暂不可用"});
     }
-    model.footer = "上下选择  确认执行";
     return model;
 }

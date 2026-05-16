@@ -10,8 +10,6 @@ namespace {
 
 constexpr char kTag[] = "Display";
 constexpr int kPagePadding = 12;
-constexpr int kTitleHeight = 22;
-constexpr int kFooterHeight = 18;
 constexpr int kLineHeight = 16;
 constexpr int kChartTitleHeight = 16;
 constexpr int kChartBottomLabelHeight = 28;
@@ -35,21 +33,19 @@ int ClampToRange(int value, int min_value, int max_value) {
 
 }  // namespace
 
-void Display::RenderPage(const PageModel& model) {
-    ESP_LOGI(kTag, "render page: %s", model.title.c_str());
+void Display::RenderPage(const PageModel& model, const TopStatusBarState& top_status_bar) {
+    ESP_LOGI(kTag, "render page: %s", top_status_bar.title.c_str());
 
     BeginPage();
 
     const int inner_width = ClampNonNegative(width_ - (kPagePadding * 2));
-    int cursor_y = kPagePadding;
-
-    DrawText({kPagePadding, cursor_y, inner_width, kTitleHeight}, model.title.c_str(), TextAlign::Left);
-    cursor_y += kTitleHeight + 4;
+    top_status_bar_.Render(this, top_status_bar);
+    int cursor_y = TopStatusBar::kHeight + kPagePadding;
 
     if (!model.bar_charts.empty()) {
         const int chart_count = static_cast<int>(model.bar_charts.size());
         const int chart_available_height = ClampNonNegative(
-            height_ - cursor_y - kFooterHeight - kPagePadding - (static_cast<int>(model.text_blocks.size()) * kLineHeight) - 8);
+            height_ - cursor_y - kPagePadding - (static_cast<int>(model.text_blocks.size()) * kLineHeight) - 8);
         const int each_chart_height = chart_count > 0 ? std::max(72, chart_available_height / chart_count) : 0;
         for (const BarChartModel& chart : model.bar_charts) {
             RenderBarChart(chart, {kPagePadding, cursor_y, inner_width, each_chart_height});
@@ -60,11 +56,6 @@ void Display::RenderPage(const PageModel& model) {
     for (const TextBlockModel& block : model.text_blocks) {
         DrawText({kPagePadding, cursor_y, inner_width, kLineHeight}, block.text.c_str(), block.align);
         cursor_y += kLineHeight;
-    }
-
-    if (!model.footer.empty()) {
-        DrawLine(kPagePadding, height_ - kFooterHeight - 2, width_ - kPagePadding, height_ - kFooterHeight - 2);
-        DrawText({kPagePadding, height_ - kFooterHeight, inner_width, kFooterHeight}, model.footer.c_str(), TextAlign::Left);
     }
 
     EndPage();

@@ -39,6 +39,7 @@ struct AppContext {
     int page_count = 0;
     bool battery_known = false;
     int battery_level = 0;
+    bool battery_charging = false;
     bool wifi_connected = false;
     bool wifi_connecting = false;
     bool wifi_config_mode = false;

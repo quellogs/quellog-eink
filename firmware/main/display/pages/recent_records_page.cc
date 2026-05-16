@@ -17,7 +17,6 @@ std::string FormatRecordLine(const RecordSummary& record) {
 
 PageModel RecentRecordsPage::BuildModel(const AppContext& context) const {
     PageModel model;
-    model.title = "泉流迹 / 最近记录";
     if (context.dashboard.recent_records.empty()) {
         model.text_blocks.push_back({"暂无本地记录。"});
     } else {
@@ -25,6 +24,5 @@ PageModel RecentRecordsPage::BuildModel(const AppContext& context) const {
             model.text_blocks.push_back({FormatRecordLine(record)});
         }
     }
-    model.footer = "上下翻页";
     return model;
 }

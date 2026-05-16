@@ -5,6 +5,8 @@
 #include <string>
 #include <vector>
 
+#include "top_status_bar.h"
+
 struct Rect {
     int x = 0;
     int y = 0;
@@ -37,10 +39,8 @@ struct BarChartModel {
 };
 
 struct PageModel {
-    std::string title;
     std::vector<TextBlockModel> text_blocks;
     std::vector<BarChartModel> bar_charts;
-    std::string footer;
 };
 
 class Display {
@@ -48,7 +48,7 @@ public:
     Display() = default;
     virtual ~Display() = default;
 
-    virtual void RenderPage(const PageModel& model);
+    virtual void RenderPage(const PageModel& model, const TopStatusBarState& top_status_bar);
     virtual void SetStatus(const char* status);
     virtual void ShowNotification(const char* notification);
     virtual void RequestFullRefresh();
@@ -73,6 +73,7 @@ protected:
 
     int width_ = 0;
     int height_ = 0;
+    TopStatusBar top_status_bar_;
 };
 
 class NoDisplay : public Display {

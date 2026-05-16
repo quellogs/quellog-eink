@@ -6,7 +6,7 @@
 class SettingsPage : public UiPage {
 public:
     const char* GetId() const override { return "settings"; }
-    const char* GetTitle() const override { return "Settings"; }
+    const char* GetTitle() const override { return "设置"; }
     PageModel BuildModel(const AppContext& context) const override;
 };
 
