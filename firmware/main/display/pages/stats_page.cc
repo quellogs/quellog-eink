@@ -1,20 +1,24 @@
 #include "stats_page.h"
 
 #include <algorithm>
+
 namespace {
 
-std::vector<BarChartItem> BuildTopSpendingChartItems(const std::vector<CategorySummary>& categories) {
+constexpr int kPreferredVisibleCategoryCount = 9;
+
+std::vector<BarChartItem> BuildTopSpendingChartItems(const std::vector<CategorySummary>& categories,
+                                                     int max_visible_items) {
     std::vector<CategorySummary> sorted = categories;
     std::sort(sorted.begin(), sorted.end(), [](const CategorySummary& left, const CategorySummary& right) {
         return left.amount_cents > right.amount_cents;
     });
 
     std::vector<BarChartItem> items;
-    items.reserve(std::min<size_t>(6, sorted.size()));
+    items.reserve(std::min(static_cast<size_t>(max_visible_items), sorted.size()));
 
     int64_t others_amount = 0;
     for (size_t i = 0; i < sorted.size(); ++i) {
-        if (i < 5) {
+        if (static_cast<int>(i) < max_visible_items) {
             items.push_back({sorted[i].category, sorted[i].amount_cents, false});
         } else {
             others_amount += sorted[i].amount_cents;
@@ -43,11 +47,18 @@ PageModel StatsPage::BuildModel(const AppContext& context) const {
     if (context.dashboard.categories.empty()) {
         model.text_blocks.push_back({"暂无分类统计。"});
     } else {
-        const std::vector<BarChartItem> items = BuildTopSpendingChartItems(context.dashboard.categories);
+        const std::vector<BarChartItem> items =
+            BuildTopSpendingChartItems(context.dashboard.categories, kPreferredVisibleCategoryCount);
         model.bar_charts.push_back({
             "按分类支出",
             items,
             GetMaxAmountCents(items),
+            kPreferredVisibleCategoryCount,
+            static_cast<int>(context.dashboard.categories.size()) > kPreferredVisibleCategoryCount,
+            AmountLabelMode::All,
+            0,
+            std::min(1, static_cast<int>(items.size()) - 1),
+            false,
             true,
         });
     }

@@ -7,6 +7,9 @@
 
 #include "top_status_bar.h"
 
+struct _lv_font_t;
+typedef struct _lv_font_t lv_font_t;
+
 struct Rect {
     int x = 0;
     int y = 0;
@@ -41,14 +44,33 @@ struct BarChartItem {
     bool is_others = false;
 };
 
+enum class AmountLabelMode {
+    None = 0,
+    TopHighlights,
+    All
+};
+
+struct SummaryMetricModel {
+    std::string label;
+    std::string value;
+    std::string note;
+};
+
 struct BarChartModel {
     std::string title;
     std::vector<BarChartItem> items;
     int64_t max_amount_cents = 0;
-    bool show_amount_labels = true;
+    int max_visible_items = 8;
+    bool include_others = false;
+    AmountLabelMode amount_label_mode = AmountLabelMode::TopHighlights;
+    int highlight_item_index = 0;
+    int secondary_highlight_item_index = 1;
+    bool show_reference_lines = true;
+    bool show_baseline = true;
 };
 
 struct PageModel {
+    std::vector<SummaryMetricModel> summary_metrics;
     std::vector<TextBlockModel> text_blocks;
     std::vector<BarChartModel> bar_charts;
     SplitViewModel split_view;
@@ -80,6 +102,11 @@ public:
 protected:
     int MeasureTextWidth(const char* text) const;
     std::string FitText(const std::string& text, int max_width, const char* ellipsis = "...") const;
+    void DrawTextWithFont(const Rect& rect, const lv_font_t* font, const char* text, TextAlign align = TextAlign::Left);
+    void DrawHorizontalDashes(int x, int y, int width, int dash_length, int gap_length);
+    void DrawArrowLine(int x1, int y1, int x2, int y2, int arrow_size);
+    void FillRectPattern(const Rect& rect, int step_x, int step_y);
+    void RenderSummaryMetrics(const std::vector<SummaryMetricModel>& metrics, int* cursor_y);
     void RenderBarChart(const BarChartModel& model, const Rect& rect);
     void RenderSplitView(const SplitViewModel& model, int origin_y);
 

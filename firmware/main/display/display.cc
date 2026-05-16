@@ -9,16 +9,27 @@
 namespace {
 
 constexpr char kTag[] = "Display";
-constexpr int kPagePadding = 12;
+constexpr int kPagePadding = 10;
 constexpr int kLineHeight = 16;
 constexpr int kSplitViewGap = 10;
 constexpr int kSplitViewMenuWidth = 116;
 constexpr int kSplitViewMenuRowHeight = 24;
 constexpr int kSplitViewDetailPadding = 10;
-constexpr int kChartTitleHeight = 16;
-constexpr int kChartBottomLabelHeight = 28;
+constexpr int kChartBottomLabelHeight = 18;
 constexpr int kChartAmountHeight = 14;
-constexpr int kChartGap = 10;
+constexpr int kChartGap = 5;
+constexpr int kChartYAxisWidth = 10;
+constexpr int kChartXAxisTickHeight = 4;
+constexpr int kChartArrowSize = 5;
+constexpr int kChartArrowOverhang = 6;
+constexpr int kChartTopStatusBarGap = 4;
+constexpr int kChartBottomPagePadding = 2;
+constexpr int kSummaryLabelHeight = 12;
+constexpr int kSummaryValueHeight = 24;
+constexpr int kSummaryNoteHeight = 12;
+constexpr int kSummaryCardHeight = 54;
+constexpr int kSummaryGap = 6;
+constexpr int kSummarySectionGap = 10;
 
 int ClampNonNegative(int value) {
     return value < 0 ? 0 : value;
@@ -35,6 +46,19 @@ int ClampToRange(int value, int min_value, int max_value) {
     return std::max(min_value, std::min(value, max_value));
 }
 
+bool ShouldShowAmountLabel(const BarChartModel& model, int item_index) {
+    switch (model.amount_label_mode) {
+        case AmountLabelMode::None:
+            return false;
+        case AmountLabelMode::All:
+            return true;
+        case AmountLabelMode::TopHighlights:
+            return item_index == model.highlight_item_index || item_index == model.secondary_highlight_item_index;
+        default:
+            return false;
+    }
+}
+
 }  // namespace
 
 void Display::RenderPage(const PageModel& model, const TopStatusBarState& top_status_bar) {
@@ -44,7 +68,8 @@ void Display::RenderPage(const PageModel& model, const TopStatusBarState& top_st
 
     const int inner_width = ClampNonNegative(width_ - (kPagePadding * 2));
     top_status_bar_.Render(this, top_status_bar);
-    int cursor_y = TopStatusBar::kHeight + kPagePadding;
+    int cursor_y =
+        TopStatusBar::kHeight + (model.bar_charts.empty() ? kPagePadding : kChartTopStatusBarGap);
 
     if (!model.split_view.menu_items.empty()) {
         RenderSplitView(model.split_view, cursor_y);
@@ -52,14 +77,18 @@ void Display::RenderPage(const PageModel& model, const TopStatusBarState& top_st
         return;
     }
 
+    if (!model.summary_metrics.empty()) {
+        RenderSummaryMetrics(model.summary_metrics, &cursor_y);
+    }
+
     if (!model.bar_charts.empty()) {
         const int chart_count = static_cast<int>(model.bar_charts.size());
         const int chart_available_height = ClampNonNegative(
-            height_ - cursor_y - kPagePadding - (static_cast<int>(model.text_blocks.size()) * kLineHeight) - 8);
-        const int each_chart_height = chart_count > 0 ? std::max(72, chart_available_height / chart_count) : 0;
+            height_ - cursor_y - kChartBottomPagePadding - (static_cast<int>(model.text_blocks.size()) * kLineHeight));
+        const int each_chart_height = chart_count > 0 ? std::max(120, chart_available_height / chart_count) : 0;
         for (const BarChartModel& chart : model.bar_charts) {
             RenderBarChart(chart, {kPagePadding, cursor_y, inner_width, each_chart_height});
-            cursor_y += each_chart_height + 4;
+            cursor_y += each_chart_height + 6;
         }
     }
 
@@ -102,8 +131,11 @@ void Display::DrawText(const Rect& rect, const char* text, TextAlign align) {
     }
 
     const lv_font_t* font = LvglTextRenderer::SelectFontForHeight(rect.h);
-    if (font == nullptr) {
-        ESP_LOGW(kTag, "lvgl font unavailable, cannot render text: %s", text);
+    DrawTextWithFont(rect, font, text, align);
+}
+
+void Display::DrawTextWithFont(const Rect& rect, const lv_font_t* font, const char* text, TextAlign align) {
+    if (text == nullptr || font == nullptr || rect.w <= 0 || rect.h <= 0) {
         return;
     }
 
@@ -182,52 +214,145 @@ std::string Display::FitText(const std::string& text, int max_width, const char*
     return LvglTextRenderer::FitText(LvglTextRenderer::GetDefaultTextFont(), text, max_width, ellipsis);
 }
 
+void Display::DrawHorizontalDashes(int x, int y, int width, int dash_length, int gap_length) {
+    if (width <= 0 || dash_length <= 0) {
+        return;
+    }
+
+    const int step = dash_length + std::max(0, gap_length);
+    for (int cursor_x = x; cursor_x < x + width; cursor_x += step) {
+        const int dash_end = std::min(x + width - 1, cursor_x + dash_length - 1);
+        DrawLine(cursor_x, y, dash_end, y);
+    }
+}
+
+void Display::DrawArrowLine(int x1, int y1, int x2, int y2, int arrow_size) {
+    DrawLine(x1, y1, x2, y2);
+    if (arrow_size <= 0) {
+        return;
+    }
+
+    if (x1 == x2) {
+        const int direction = y2 >= y1 ? 1 : -1;
+        DrawLine(x2, y2, x2 - arrow_size, y2 - (arrow_size * direction));
+        DrawLine(x2, y2, x2 + arrow_size, y2 - (arrow_size * direction));
+        return;
+    }
+
+    if (y1 == y2) {
+        const int direction = x2 >= x1 ? 1 : -1;
+        DrawLine(x2, y2, x2 - (arrow_size * direction), y2 - arrow_size);
+        DrawLine(x2, y2, x2 - (arrow_size * direction), y2 + arrow_size);
+    }
+}
+
+void Display::FillRectPattern(const Rect& rect, int step_x, int step_y) {
+    if (rect.w <= 0 || rect.h <= 0) {
+        return;
+    }
+
+    const int safe_step_x = std::max(2, step_x);
+    const int safe_step_y = std::max(2, step_y);
+    for (int y = rect.y + 1; y < rect.y + rect.h - 1; y += safe_step_y) {
+        for (int x = rect.x + 1; x < rect.x + rect.w - 1; x += safe_step_x) {
+            SetPixel(x, y, true);
+        }
+    }
+}
+
+void Display::RenderSummaryMetrics(const std::vector<SummaryMetricModel>& metrics, int* cursor_y) {
+    if (cursor_y == nullptr || metrics.empty()) {
+        return;
+    }
+
+    const int metric_count = static_cast<int>(metrics.size());
+    const int inner_width = ClampNonNegative(width_ - (kPagePadding * 2));
+    const int total_gap = std::max(0, metric_count - 1) * kSummaryGap;
+    const int card_width = metric_count > 0 ? ClampNonNegative((inner_width - total_gap) / metric_count) : 0;
+    int x = kPagePadding;
+
+    for (int index = 0; index < metric_count; ++index) {
+        const SummaryMetricModel& metric = metrics[index];
+        const Rect card = {x, *cursor_y, card_width, kSummaryCardHeight};
+        DrawRect(card);
+        DrawHorizontalDashes(card.x + 4, card.y + 16, card.w - 8, 4, 3);
+        DrawText({card.x + 6, card.y + 3, card.w - 12, kSummaryLabelHeight}, metric.label.c_str(), TextAlign::Left);
+        DrawText({card.x + 6, card.y + 16, card.w - 12, kSummaryValueHeight}, metric.value.c_str(), TextAlign::Left);
+        if (!metric.note.empty()) {
+            const std::string note = FitText(metric.note, card.w - 12);
+            DrawText({card.x + 6, card.y + card.h - kSummaryNoteHeight - 4, card.w - 12, kSummaryNoteHeight},
+                     note.c_str(), TextAlign::Left);
+        }
+        x += card_width + kSummaryGap;
+    }
+
+    *cursor_y += kSummaryCardHeight + kSummarySectionGap;
+}
+
 void Display::RenderBarChart(const BarChartModel& model, const Rect& rect) {
     if (rect.w <= 0 || rect.h <= 0) {
         return;
     }
 
-    DrawText({rect.x, rect.y, rect.w, kChartTitleHeight}, model.title.c_str(), TextAlign::Left);
-
     const Rect plot = {
         rect.x,
-        rect.y + kChartTitleHeight + 2,
+        rect.y,
         rect.w,
-        ClampNonNegative(rect.h - kChartTitleHeight - kChartBottomLabelHeight - 4)
+        rect.h
     };
     if (model.items.empty() || model.max_amount_cents <= 0 || plot.w <= 0 || plot.h <= 0) {
         DrawText({plot.x + 4, plot.y + 4, plot.w - 8, kLineHeight}, "No spending data", TextAlign::Left);
         return;
     }
-    DrawRect(plot);
 
     const int item_count = static_cast<int>(model.items.size());
-    const int total_gap = (item_count + 1) * kChartGap;
-    const int bar_width = std::max(12, (plot.w - total_gap) / std::max(1, item_count));
-    int x = plot.x + kChartGap;
+    const int amount_reserved_height = model.amount_label_mode == AmountLabelMode::None ? 4 : kChartAmountHeight + 2;
     const int plot_bottom = plot.y + plot.h - 1;
+    const int axis_left = plot.x + kChartYAxisWidth;
+    const int axis_right = plot.x + plot.w - kChartArrowSize - kChartArrowOverhang - 1;
+    const int bar_area_top = plot.y + amount_reserved_height + 2;
+    const int bar_area_bottom = plot_bottom - kChartBottomLabelHeight - kChartXAxisTickHeight;
+    const int bar_area_height = std::max(16, bar_area_bottom - bar_area_top);
+    const int total_gap = std::max(0, item_count - 1) * kChartGap;
+    const int plot_content_width = std::max(0, axis_right - axis_left - 4);
+    const int bar_width = item_count > 0 ? std::max(8, (plot_content_width - total_gap) / item_count) : 0;
+    const int content_width = item_count > 0 ? (bar_width * item_count) + total_gap : 0;
+    int x = axis_left + 4 + std::max(0, (plot_content_width - content_width) / 2);
 
-    for (const BarChartItem& item : model.items) {
+    const int top_tick_y = bar_area_top;
+    const int middle_tick_y = bar_area_top + (bar_area_height / 2);
+
+    if (model.show_reference_lines) {
+        DrawHorizontalDashes(axis_left + 1, top_tick_y, axis_right - axis_left, 4, 4);
+        DrawHorizontalDashes(axis_left + 1, middle_tick_y, axis_right - axis_left, 4, 4);
+    }
+    DrawArrowLine(axis_left, bar_area_bottom, axis_right + kChartArrowOverhang, bar_area_bottom, kChartArrowSize);
+    DrawArrowLine(axis_left, bar_area_bottom, axis_left, plot.y, kChartArrowSize);
+
+    for (int index = 0; index < item_count; ++index) {
+        const BarChartItem& item = model.items[index];
         const int bar_height = std::max(
-            2,
-            static_cast<int>((static_cast<long long>(plot.h - kChartAmountHeight - 6) * item.amount_cents) / model.max_amount_cents));
+            3,
+            static_cast<int>((static_cast<long long>(bar_area_height) * item.amount_cents) / model.max_amount_cents));
         const Rect bar = {
             x,
-            plot_bottom - kChartBottomLabelHeight - bar_height,
+            bar_area_bottom - bar_height,
             std::min(bar_width, plot.x + plot.w - x),
             bar_height
         };
         FillRect(bar);
         DrawRect(bar);
 
-        if (model.show_amount_labels) {
+        if (ShouldShowAmountLabel(model, index)) {
             const std::string amount = FormatChartAmount(item.amount_cents);
             DrawText({x - 6, bar.y - kChartAmountHeight - 2, bar_width + 12, kChartAmountHeight},
                      amount.c_str(), TextAlign::Center);
         }
 
-        const std::string label = FitText(item.label, bar_width + 12);
-        DrawText({x - 6, plot_bottom - kChartBottomLabelHeight + 6, bar_width + 12, kChartBottomLabelHeight - 6},
+        const int tick_x = x + (bar.w / 2);
+        DrawLine(tick_x, bar_area_bottom, tick_x, bar_area_bottom + kChartXAxisTickHeight);
+        const std::string label = FitText(item.label, bar_width + 6, "..");
+        DrawText({x - 3, plot_bottom - kChartBottomLabelHeight + 1, bar_width + 6, kChartBottomLabelHeight - 1},
                  label.c_str(), TextAlign::Center);
         x += bar_width + kChartGap;
     }
