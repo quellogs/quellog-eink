@@ -4,13 +4,33 @@
 
 namespace {
 
-std::string FormatStorageLine(const std::string& label, uint32_t used_kb, uint32_t total_kb) {
+std::string FormatStorageSize(uint32_t size_kb) {
+    if (size_kb < 1024) {
+        return std::to_string(size_kb) + "KB";
+    }
+
+    const uint64_t rounded_tenths = ((static_cast<uint64_t>(size_kb) * 10U) + 512U) / 1024U;
+    const uint64_t whole = rounded_tenths / 10U;
+    const uint64_t fraction = rounded_tenths % 10U;
+    if (fraction == 0) {
+        return std::to_string(whole) + "MB";
+    }
+    return std::to_string(whole) + "." + std::to_string(fraction) + "MB";
+}
+
+std::string FormatStorageValue(uint32_t used_kb, uint32_t total_kb) {
     if (total_kb == 0) {
-        return label + "  暂不可用";
+        return "暂不可用";
     }
     const int percent = static_cast<int>((static_cast<uint64_t>(used_kb) * 100U) / total_kb);
-    return label + "  " + std::to_string(used_kb) + "/" + std::to_string(total_kb) + "KB  " +
-           std::to_string(percent) + "%";
+    return FormatStorageSize(used_kb) + "/" + FormatStorageSize(total_kb) + "  " + std::to_string(percent) + "%";
+}
+
+int GetStoragePercent(uint32_t used_kb, uint32_t total_kb) {
+    if (total_kb == 0) {
+        return 0;
+    }
+    return static_cast<int>((static_cast<uint64_t>(used_kb) * 100U) / total_kb);
 }
 
 void AppendWifiStatusBlocks(const AppContext& context, std::vector<TextBlockModel>* blocks) {
@@ -50,7 +70,6 @@ void AppendBluetoothBlocks(const AppContext& context, std::vector<TextBlockModel
         return;
     }
 
-    blocks->push_back({"蓝牙"});
     if (!context.bluetooth_available) {
         blocks->push_back({"状态  不可用"});
         blocks->push_back({"当前固件未启用蓝牙组件。"});
@@ -65,24 +84,31 @@ void AppendSoundBlocks(const AppContext& context, std::vector<TextBlockModel>* b
         return;
     }
 
-    blocks->push_back({"声音"});
     blocks->push_back({"音量  " + std::to_string(context.volume_percent) + "%"});
     blocks->push_back({context.volume_percent == 0 ? "当前为静音。" : "确认键每次增加 10%。"});
 }
 
-void AppendStorageBlocks(const AppContext& context, std::vector<TextBlockModel>* blocks) {
-    if (blocks == nullptr) {
+void AppendStorageBlocks(const AppContext& context, SplitViewModel* split_view) {
+    if (split_view == nullptr) {
         return;
     }
 
-    blocks->push_back({"存储空间"});
+    std::vector<TextBlockModel>* blocks = &split_view->detail_blocks;
     if (!context.storage.available) {
         blocks->push_back({"空间信息暂不可用。"});
         return;
     }
-    blocks->push_back({"Flash 总量  " + std::to_string(context.storage.flash_total_kb) + "KB"});
-    blocks->push_back({FormatStorageLine("App 分区", context.storage.app_used_kb, context.storage.app_total_kb)});
-    blocks->push_back({FormatStorageLine("NVS 分区", context.storage.nvs_used_kb, context.storage.nvs_total_kb)});
+    blocks->push_back({"总容量  " + FormatStorageSize(context.storage.flash_total_kb)});
+    split_view->detail_bars.push_back({
+        "App 分区",
+        FormatStorageValue(context.storage.app_used_kb, context.storage.app_total_kb),
+        GetStoragePercent(context.storage.app_used_kb, context.storage.app_total_kb),
+    });
+    split_view->detail_bars.push_back({
+        "NVS 分区",
+        FormatStorageValue(context.storage.nvs_used_kb, context.storage.nvs_total_kb),
+        GetStoragePercent(context.storage.nvs_used_kb, context.storage.nvs_total_kb),
+    });
 }
 
 void AppendDeviceInfoBlocks(const AppContext& context, std::vector<TextBlockModel>* blocks) {
@@ -90,7 +116,6 @@ void AppendDeviceInfoBlocks(const AppContext& context, std::vector<TextBlockMode
         return;
     }
 
-    blocks->push_back({"设备信息"});
     blocks->push_back({"设备别名  " + context.device_alias});
     blocks->push_back({"板型  " + context.board_type});
     blocks->push_back({"UUID  " + context.device_uuid});
@@ -116,7 +141,6 @@ PageModel SettingsPage::BuildModel(const AppContext& context) const {
 
     switch (context.settings_selected_item) {
         case 0:
-            model.split_view.detail_blocks.push_back({"无线网络"});
             model.split_view.detail_blocks.push_back({"确认键可切换 WiFi 开关。"});
             AppendWifiStatusBlocks(context, &model.split_view.detail_blocks);
             break;
@@ -127,7 +151,7 @@ PageModel SettingsPage::BuildModel(const AppContext& context) const {
             AppendSoundBlocks(context, &model.split_view.detail_blocks);
             break;
         case 3:
-            AppendStorageBlocks(context, &model.split_view.detail_blocks);
+            AppendStorageBlocks(context, &model.split_view);
             break;
         case 4:
             AppendDeviceInfoBlocks(context, &model.split_view.detail_blocks);

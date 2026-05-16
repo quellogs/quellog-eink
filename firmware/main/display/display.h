@@ -42,6 +42,12 @@ struct TextBlockModel {
     TextAlign align = TextAlign::Left;
 };
 
+struct SplitViewDetailBar {
+    std::string label;
+    std::string value;
+    int percent = 0;
+};
+
 struct SplitViewMenuItem {
     std::string text;
     bool selected = false;
@@ -51,6 +57,7 @@ struct SplitViewMenuItem {
 struct SplitViewModel {
     std::vector<SplitViewMenuItem> menu_items;
     std::vector<TextBlockModel> detail_blocks;
+    std::vector<SplitViewDetailBar> detail_bars;
 };
 
 struct BarChartItem {
