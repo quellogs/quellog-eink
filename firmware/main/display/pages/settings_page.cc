@@ -26,13 +26,6 @@ std::string FormatStorageValue(uint32_t used_kb, uint32_t total_kb) {
     return FormatStorageSize(used_kb) + "/" + FormatStorageSize(total_kb) + "  " + std::to_string(percent) + "%";
 }
 
-int GetStoragePercent(uint32_t used_kb, uint32_t total_kb) {
-    if (total_kb == 0) {
-        return 0;
-    }
-    return static_cast<int>((static_cast<uint64_t>(used_kb) * 100U) / total_kb);
-}
-
 void AppendWifiStatusBlocks(const AppContext& context, std::vector<TextBlockModel>* blocks) {
     if (blocks == nullptr) {
         return;
@@ -88,26 +81,28 @@ void AppendSoundBlocks(const AppContext& context, std::vector<TextBlockModel>* b
     blocks->push_back({context.volume_percent == 0 ? "当前为静音。" : "确认键每次增加 10%。"});
 }
 
-void AppendStorageBlocks(const AppContext& context, SplitViewModel* split_view) {
+void AppendStorageSections(const AppContext& context, SplitViewModel* split_view) {
     if (split_view == nullptr) {
         return;
     }
 
-    std::vector<TextBlockModel>* blocks = &split_view->detail_blocks;
+    SplitViewDetailSection storage_section;
+    storage_section.title = "存储";
     if (!context.storage.available) {
-        blocks->push_back({"空间信息暂不可用。"});
+        storage_section.items.push_back({"状态", "暂不可用"});
+        split_view->detail_sections.push_back(storage_section);
         return;
     }
-    blocks->push_back({"总容量  " + FormatStorageSize(context.storage.flash_total_kb)});
-    split_view->detail_bars.push_back({
-        "App 分区",
-        FormatStorageValue(context.storage.app_used_kb, context.storage.app_total_kb),
-        GetStoragePercent(context.storage.app_used_kb, context.storage.app_total_kb),
-    });
-    split_view->detail_bars.push_back({
-        "NVS 分区",
-        FormatStorageValue(context.storage.nvs_used_kb, context.storage.nvs_total_kb),
-        GetStoragePercent(context.storage.nvs_used_kb, context.storage.nvs_total_kb),
+
+    storage_section.items.push_back({"总容量", FormatStorageSize(context.storage.flash_total_kb)});
+    split_view->detail_sections.push_back(storage_section);
+
+    split_view->detail_sections.push_back({
+        "分区",
+        {
+            {"App", FormatStorageValue(context.storage.app_used_kb, context.storage.app_total_kb)},
+            {"NVS", FormatStorageValue(context.storage.nvs_used_kb, context.storage.nvs_total_kb)},
+        },
     });
 }
 
@@ -162,7 +157,7 @@ PageModel SettingsPage::BuildModel(const AppContext& context) const {
             AppendSoundBlocks(context, &model.split_view.detail_blocks);
             break;
         case 3:
-            AppendStorageBlocks(context, &model.split_view);
+            AppendStorageSections(context, &model.split_view);
             break;
         case 4:
             AppendDeviceInfoSections(context, &model.split_view);

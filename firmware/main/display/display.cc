@@ -747,8 +747,13 @@ void Display::RenderSplitView(const SplitViewModel& model, int origin_y) {
                  TextAlign::Left,
                  PixelColor::White);
 
+        int label_width = 0;
+        for (const SplitViewDetailItem& item : section.items) {
+            label_width = std::max(label_width, MeasureTextWidth(item.label.c_str()) + 8);
+        }
+        label_width = ClampToRange(label_width, 52, std::max(52, section_rect.w / 4));
+
         int row_y = section_rect.y + kSplitViewSectionHeaderHeight;
-        const int label_width = std::max(52, section_rect.w / 3);
         for (const SplitViewDetailItem& item : section.items) {
             if (row_y > section_rect.y + kSplitViewSectionHeaderHeight) {
                 DrawLine(section_rect.x + kSplitViewSectionPadding,
