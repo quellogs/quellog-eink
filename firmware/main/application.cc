@@ -30,18 +30,24 @@ Application::Application()
 }
 
 void Application::Initialize() {
+    ESP_LOGI(kTag, "initialize start");
     display_ = board_.GetDisplay();
+    ESP_LOGI(kTag, "display acquired");
     pages_ = UiPageRegistry::CreateDefault();
     board_.SetNetworkEventCallback([this](NetworkEvent event, const std::string& data) {
         HandleNetworkEvent(event, data);
     });
+    ESP_LOGI(kTag, "network start begin");
     board_.StartNetwork();
+    ESP_LOGI(kTag, "network start end");
     LoadSettings();
     SeedMockData();
     state_.store(kDeviceStateStarting, std::memory_order_release);
     UpdateDeviceState();
     last_refresh_us_ = esp_timer_get_time();
+    ESP_LOGI(kTag, "first render begin");
     RenderCurrentPage(true);
+    ESP_LOGI(kTag, "first render end");
 }
 
 void Application::Run() {

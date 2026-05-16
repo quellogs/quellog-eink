@@ -86,24 +86,48 @@ bool WifiManager::IsInitialized() const {
 
 void WifiManager::StartStation() {
     bool notify_config_exit = false;
+    WifiStation* station = nullptr;
+    WifiConfigurationAp* config_ap = nullptr;
+    int scan_interval_seconds = 15;
     {
         std::unique_lock<std::mutex> lock(mutex_);
         if (!initialized_ || station_active_ || station_ == nullptr) {
             return;
         }
-        if (config_mode_active_ && config_ap_ != nullptr) {
-            config_ap_->Stop();
-            config_mode_active_ = false;
-            notify_config_exit = true;
-        }
+        station = station_.get();
+        config_ap = config_ap_.get();
+        scan_interval_seconds = config_.station_scan_interval_seconds;
+    }
 
-        station_->SetScanIntervalSeconds(config_.station_scan_interval_seconds);
-        station_->OnScanBegin([this]() { NotifyEvent(WifiEvent::Scanning); });
-        station_->OnConnect([this](const std::string&) { NotifyEvent(WifiEvent::Connecting); });
-        station_->OnConnected([this](const std::string&) { NotifyEvent(WifiEvent::Connected); });
-        station_->OnDisconnected([this]() { NotifyEvent(WifiEvent::Disconnected); });
-        station_->Start();
-        station_active_ = true;
+    if (config_ap != nullptr) {
+        std::unique_lock<std::mutex> lock(mutex_);
+        if (config_mode_active_ && config_ap_.get() == config_ap) {
+            lock.unlock();
+            config_ap->Stop();
+            lock.lock();
+            if (config_mode_active_ && config_ap_.get() == config_ap) {
+                config_mode_active_ = false;
+                notify_config_exit = true;
+            }
+        }
+    }
+
+    if (station == nullptr) {
+        return;
+    }
+
+    station->SetScanIntervalSeconds(scan_interval_seconds);
+    station->OnScanBegin([this]() { NotifyEvent(WifiEvent::Scanning); });
+    station->OnConnect([this](const std::string&) { NotifyEvent(WifiEvent::Connecting); });
+    station->OnConnected([this](const std::string&) { NotifyEvent(WifiEvent::Connected); });
+    station->OnDisconnected([this]() { NotifyEvent(WifiEvent::Disconnected); });
+    station->Start();
+
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (station_.get() == station) {
+            station_active_ = true;
+        }
     }
 
     if (notify_config_exit) {
@@ -113,14 +137,19 @@ void WifiManager::StartStation() {
 
 void WifiManager::StopStation() {
     bool notify_disconnected = false;
+    WifiStation* station = nullptr;
     {
         std::lock_guard<std::mutex> lock(mutex_);
         if (!station_active_ || station_ == nullptr) {
             return;
         }
-        station_->Stop();
+        station = station_.get();
         station_active_ = false;
         notify_disconnected = true;
+    }
+
+    if (station != nullptr) {
+        station->Stop();
     }
 
     if (notify_disconnected) {
@@ -155,23 +184,42 @@ int WifiManager::GetChannel() const {
 
 void WifiManager::StartConfigAp() {
     bool notify_disconnected = false;
+    WifiStation* station = nullptr;
+    WifiConfigurationAp* config_ap = nullptr;
+    WifiManagerConfig config;
     {
         std::lock_guard<std::mutex> lock(mutex_);
         if (!initialized_ || config_mode_active_ || config_ap_ == nullptr) {
             return;
         }
-        if (station_active_ && station_ != nullptr) {
-            station_->Stop();
+        station = station_.get();
+        config_ap = config_ap_.get();
+        config = config_;
+        if (station_active_ && station != nullptr) {
             station_active_ = false;
             notify_disconnected = true;
         }
+    }
 
-        config_ap_->SetSsidPrefix(config_.ssid_prefix);
-        config_ap_->SetPassword(config_.ap_password);
-        config_ap_->SetLanguage(config_.language);
-        config_ap_->OnExitRequested([this]() { HandleConfigExitRequested(); });
-        config_ap_->Start();
-        config_mode_active_ = true;
+    if (station != nullptr && notify_disconnected) {
+        station->Stop();
+    }
+
+    if (config_ap == nullptr) {
+        return;
+    }
+
+    config_ap->SetSsidPrefix(config.ssid_prefix);
+    config_ap->SetPassword(config.ap_password);
+    config_ap->SetLanguage(config.language);
+    config_ap->OnExitRequested([this]() { HandleConfigExitRequested(); });
+    config_ap->Start();
+
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (config_ap_.get() == config_ap) {
+            config_mode_active_ = true;
+        }
     }
 
     if (notify_disconnected) {
@@ -182,14 +230,19 @@ void WifiManager::StartConfigAp() {
 
 void WifiManager::StopConfigAp() {
     bool notify_exit = false;
+    WifiConfigurationAp* config_ap = nullptr;
     {
         std::lock_guard<std::mutex> lock(mutex_);
         if (!config_mode_active_ || config_ap_ == nullptr) {
             return;
         }
-        config_ap_->Stop();
+        config_ap = config_ap_.get();
         config_mode_active_ = false;
         notify_exit = true;
+    }
+
+    if (config_ap != nullptr) {
+        config_ap->Stop();
     }
 
     if (notify_exit) {

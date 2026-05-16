@@ -25,6 +25,54 @@ config QUELLOG_BUTTON_CONFIRM_GPIO
     range -1 48
     depends on QUELLOG_BOARD_TYPE_ZECTRIX_S3_EPAPER_4_2
 
+config QUELLOG_EPD_SPI_HOST
+    int "EPD SPI host"
+    default 2
+    range 0 3
+    depends on QUELLOG_BOARD_TYPE_ZECTRIX_S3_EPAPER_4_2
+
+config QUELLOG_EPD_DC_GPIO
+    int "EPD DC GPIO"
+    default 10
+    range -1 48
+    depends on QUELLOG_BOARD_TYPE_ZECTRIX_S3_EPAPER_4_2
+
+config QUELLOG_EPD_CS_GPIO
+    int "EPD CS GPIO"
+    default 11
+    range -1 48
+    depends on QUELLOG_BOARD_TYPE_ZECTRIX_S3_EPAPER_4_2
+
+config QUELLOG_EPD_SCK_GPIO
+    int "EPD SCK GPIO"
+    default 12
+    range -1 48
+    depends on QUELLOG_BOARD_TYPE_ZECTRIX_S3_EPAPER_4_2
+
+config QUELLOG_EPD_MOSI_GPIO
+    int "EPD MOSI GPIO"
+    default 13
+    range -1 48
+    depends on QUELLOG_BOARD_TYPE_ZECTRIX_S3_EPAPER_4_2
+
+config QUELLOG_EPD_RST_GPIO
+    int "EPD RESET GPIO"
+    default 9
+    range -1 48
+    depends on QUELLOG_BOARD_TYPE_ZECTRIX_S3_EPAPER_4_2
+
+config QUELLOG_EPD_BUSY_GPIO
+    int "EPD BUSY GPIO"
+    default 8
+    range -1 48
+    depends on QUELLOG_BOARD_TYPE_ZECTRIX_S3_EPAPER_4_2
+
+config QUELLOG_EPD_POWER_GPIO
+    int "EPD power GPIO"
+    default 6
+    range -1 48
+    depends on QUELLOG_BOARD_TYPE_ZECTRIX_S3_EPAPER_4_2
+
 config QUELLOG_INPUT_DEBOUNCE_MS
     int "Button debounce in milliseconds"
     default 180

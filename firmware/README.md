@@ -118,6 +118,8 @@ docker run --rm \
 
 ## Release 打包
 
+详细步骤见 [LOCAL_RELEASE_BUILD.md](/home/anonysoul/Workspace/quellog/firmware/LOCAL_RELEASE_BUILD.md:1)。
+
 本地打包命令：
 
 ```bash
