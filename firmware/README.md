@@ -6,8 +6,8 @@
 
 - 默认板型：`Zectrix S3 e-paper 4.2"`
 - 分层：`Board` / `Display` / `Application` / `UiPage`
-- 首页：账本总览
-- 页面：总览、最近记录、统计、设置
+- 首页：统计
+- 页面：统计、最近记录、设置
 - 数据：本地占位数据
 - 中文显示：内置 `SourceHanSansSC` 字库与 UTF-8 文本渲染
 - Wi‑Fi：支持 STA 联网与 SoftAP Web 配网

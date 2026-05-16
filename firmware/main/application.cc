@@ -14,6 +14,8 @@
 namespace {
 
 constexpr char kTag[] = "Application";
+constexpr int kStatsPageIndex = 0;
+constexpr int kSettingsPageOffsetFromEnd = 1;
 constexpr int kSettingsItemRefreshPolicy = 0;
 constexpr int kSettingsItemWifiReconfigure = 1;
 constexpr int kSettingsItemGoHome = 2;
@@ -83,6 +85,8 @@ void Application::HandleInput(const InputEvent& event) {
             case InputKey::Confirm:
                 ExecuteSettingsItem();
                 return;
+            case InputKey::OpenSettings:
+                return;
             case InputKey::None:
                 return;
         }
@@ -96,22 +100,26 @@ void Application::HandleInput(const InputEvent& event) {
             NextPage();
             break;
         case InputKey::Confirm:
-            if (current_page_index_ == pages_.Count() - 1) {
-                refresh_policy_ = refresh_policy_ == RefreshPolicy::Manual
-                                      ? RefreshPolicy::Timed
-                                      : RefreshPolicy::Manual;
-                SaveSettings();
-                display_->ShowNotification(refresh_policy_ == RefreshPolicy::Timed
-                                               ? "已切换为定时刷新"
-                                               : "已切换为手动刷新");
-                RenderCurrentPage(true);
-            } else {
-                TriggerRefresh();
-            }
+            TriggerRefresh();
+            break;
+        case InputKey::OpenSettings:
+            OpenSettingsPage();
             break;
         case InputKey::None:
             break;
     }
+}
+
+void Application::OpenSettingsPage() {
+    if (pages_.Count() <= 0) {
+        return;
+    }
+
+    settings_selected_item_ = 0;
+    current_page_index_ = pages_.Count() - kSettingsPageOffsetFromEnd;
+    SaveSettings();
+    UpdateDeviceState();
+    RenderCurrentPage(false);
 }
 
 void Application::RenderCurrentPage(bool full_refresh) {
@@ -133,14 +141,24 @@ void Application::RenderCurrentPage(bool full_refresh) {
 }
 
 void Application::NextPage() {
-    current_page_index_ = (current_page_index_ + 1) % std::max(1, pages_.Count());
+    const int browseable_page_count = std::max(1, pages_.Count() - 1);
+    if (current_page_index_ >= browseable_page_count) {
+        current_page_index_ = kStatsPageIndex;
+    } else {
+        current_page_index_ = (current_page_index_ + 1) % browseable_page_count;
+    }
     SaveSettings();
     UpdateDeviceState();
     RenderCurrentPage(false);
 }
 
 void Application::PreviousPage() {
-    current_page_index_ = (current_page_index_ - 1 + std::max(1, pages_.Count())) % std::max(1, pages_.Count());
+    const int browseable_page_count = std::max(1, pages_.Count() - 1);
+    if (current_page_index_ >= browseable_page_count) {
+        current_page_index_ = browseable_page_count - 1;
+    } else {
+        current_page_index_ = (current_page_index_ - 1 + browseable_page_count) % browseable_page_count;
+    }
     SaveSettings();
     UpdateDeviceState();
     RenderCurrentPage(false);
@@ -187,7 +205,7 @@ void Application::ExecuteSettingsItem() {
             }
             break;
         case kSettingsItemGoHome:
-            current_page_index_ = 0;
+            current_page_index_ = kStatsPageIndex;
             SaveSettings();
             UpdateDeviceState();
             RenderCurrentPage(false);
@@ -198,14 +216,18 @@ void Application::ExecuteSettingsItem() {
 }
 
 bool Application::IsSettingsPage() const {
-    return current_page_index_ == pages_.Count() - 1;
+    return current_page_index_ == pages_.Count() - kSettingsPageOffsetFromEnd;
 }
 
 void Application::LoadSettings() {
     Settings settings("app", true);
-    current_page_index_ = settings.GetInt("page_index", 0);
+    const int saved_page_index = settings.GetInt("page_index", kStatsPageIndex);
+    current_page_index_ = NormalizeSavedPageIndex(saved_page_index);
     refresh_policy_ = settings.GetInt("refresh_policy", 0) == 1 ? RefreshPolicy::Timed : RefreshPolicy::Manual;
     device_alias_ = settings.GetString("device_alias", "泉流迹墨水屏");
+    if (current_page_index_ != saved_page_index) {
+        SaveSettings();
+    }
 }
 
 void Application::SaveSettings() {
@@ -213,6 +235,29 @@ void Application::SaveSettings() {
     settings.SetInt("page_index", current_page_index_);
     settings.SetInt("refresh_policy", refresh_policy_ == RefreshPolicy::Timed ? 1 : 0);
     settings.SetString("device_alias", device_alias_);
+}
+
+int Application::NormalizeSavedPageIndex(int saved_page_index) const {
+    // Migrate persisted indexes from the legacy page order:
+    // 0=总览, 1=最近记录, 2=统计, 3=设置.
+    int normalized_index = saved_page_index;
+    switch (saved_page_index) {
+        case 0:
+        case 2:
+            normalized_index = 0;
+            break;
+        case 1:
+            normalized_index = 1;
+            break;
+        case 3:
+            normalized_index = 2;
+            break;
+        default:
+            break;
+    }
+
+    const int page_count = std::max(1, pages_.Count());
+    return std::clamp(normalized_index, 0, page_count - 1);
 }
 
 void Application::SeedMockData() {

@@ -27,6 +27,7 @@ private:
     Application();
 
     void HandleInput(const InputEvent& event);
+    void OpenSettingsPage();
     void RenderCurrentPage(bool full_refresh);
     void NextPage();
     void PreviousPage();
@@ -37,6 +38,7 @@ private:
     bool IsSettingsPage() const;
     void LoadSettings();
     void SaveSettings();
+    int NormalizeSavedPageIndex(int saved_page_index) const;
     void SeedMockData();
     AppContext BuildContext() const;
     TopStatusBarState BuildTopStatusBarState(const AppContext& context) const;

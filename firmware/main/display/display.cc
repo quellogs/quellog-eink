@@ -11,6 +11,10 @@ namespace {
 constexpr char kTag[] = "Display";
 constexpr int kPagePadding = 12;
 constexpr int kLineHeight = 16;
+constexpr int kSplitViewGap = 10;
+constexpr int kSplitViewMenuWidth = 116;
+constexpr int kSplitViewMenuRowHeight = 24;
+constexpr int kSplitViewDetailPadding = 10;
 constexpr int kChartTitleHeight = 16;
 constexpr int kChartBottomLabelHeight = 28;
 constexpr int kChartAmountHeight = 14;
@@ -20,11 +24,11 @@ int ClampNonNegative(int value) {
     return value < 0 ? 0 : value;
 }
 
-std::string FormatAmount(int64_t cents) {
+std::string FormatChartAmount(int64_t cents) {
     const long long whole = static_cast<long long>(cents / 100);
     const long long fraction = static_cast<long long>(cents % 100);
     const long long abs_fraction = fraction < 0 ? -fraction : fraction;
-    return "CNY " + std::to_string(whole) + "." + (abs_fraction < 10 ? "0" : "") + std::to_string(abs_fraction);
+    return std::to_string(whole) + "." + (abs_fraction < 10 ? "0" : "") + std::to_string(abs_fraction);
 }
 
 int ClampToRange(int value, int min_value, int max_value) {
@@ -41,6 +45,12 @@ void Display::RenderPage(const PageModel& model, const TopStatusBarState& top_st
     const int inner_width = ClampNonNegative(width_ - (kPagePadding * 2));
     top_status_bar_.Render(this, top_status_bar);
     int cursor_y = TopStatusBar::kHeight + kPagePadding;
+
+    if (!model.split_view.menu_items.empty()) {
+        RenderSplitView(model.split_view, cursor_y);
+        EndPage();
+        return;
+    }
 
     if (!model.bar_charts.empty()) {
         const int chart_count = static_cast<int>(model.bar_charts.size());
@@ -211,7 +221,7 @@ void Display::RenderBarChart(const BarChartModel& model, const Rect& rect) {
         DrawRect(bar);
 
         if (model.show_amount_labels) {
-            const std::string amount = FormatAmount(item.amount_cents);
+            const std::string amount = FormatChartAmount(item.amount_cents);
             DrawText({x - 6, bar.y - kChartAmountHeight - 2, bar_width + 12, kChartAmountHeight},
                      amount.c_str(), TextAlign::Center);
         }
@@ -220,5 +230,57 @@ void Display::RenderBarChart(const BarChartModel& model, const Rect& rect) {
         DrawText({x - 6, plot_bottom - kChartBottomLabelHeight + 6, bar_width + 12, kChartBottomLabelHeight - 6},
                  label.c_str(), TextAlign::Center);
         x += bar_width + kChartGap;
+    }
+}
+
+void Display::RenderSplitView(const SplitViewModel& model, int origin_y) {
+    const int available_height = ClampNonNegative(height_ - origin_y - kPagePadding);
+    const int inner_width = ClampNonNegative(width_ - (kPagePadding * 2));
+    if (available_height <= 0 || inner_width <= 0) {
+        return;
+    }
+
+    const int menu_width = std::min(kSplitViewMenuWidth, std::max(80, inner_width / 3));
+    const Rect menu_rect = {kPagePadding, origin_y, menu_width, available_height};
+    const Rect detail_rect = {
+        menu_rect.x + menu_rect.w + kSplitViewGap,
+        origin_y,
+        ClampNonNegative(inner_width - menu_rect.w - kSplitViewGap),
+        available_height
+    };
+
+    DrawRect(menu_rect);
+    DrawRect(detail_rect);
+    DrawLine(menu_rect.x + menu_rect.w + (kSplitViewGap / 2),
+             origin_y,
+             menu_rect.x + menu_rect.w + (kSplitViewGap / 2),
+             origin_y + available_height);
+
+    int menu_cursor_y = menu_rect.y + 6;
+    for (const SplitViewMenuItem& item : model.menu_items) {
+        if (menu_cursor_y + kSplitViewMenuRowHeight > menu_rect.y + menu_rect.h - 4) {
+            break;
+        }
+
+        const Rect item_rect = {menu_rect.x + 4, menu_cursor_y, menu_rect.w - 8, kSplitViewMenuRowHeight};
+        if (item.selected) {
+            DrawRect(item_rect);
+        }
+        const std::string fitted_text = FitText(item.text, item_rect.w - 10);
+        DrawText({item_rect.x + 5, item_rect.y, item_rect.w - 10, item_rect.h}, fitted_text.c_str(), TextAlign::Left);
+        menu_cursor_y += kSplitViewMenuRowHeight + 6;
+    }
+
+    int detail_cursor_y = detail_rect.y + kSplitViewDetailPadding;
+    const int detail_text_width = ClampNonNegative(detail_rect.w - (kSplitViewDetailPadding * 2));
+    for (const TextBlockModel& block : model.detail_blocks) {
+        if (detail_cursor_y + kLineHeight > detail_rect.y + detail_rect.h - kSplitViewDetailPadding) {
+            break;
+        }
+
+        DrawText({detail_rect.x + kSplitViewDetailPadding, detail_cursor_y, detail_text_width, kLineHeight},
+                 block.text.c_str(),
+                 block.align);
+        detail_cursor_y += kLineHeight;
     }
 }

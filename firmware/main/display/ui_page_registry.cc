@@ -1,15 +1,13 @@
 #include "ui_page_registry.h"
 
-#include "pages/overview_page.h"
 #include "pages/recent_records_page.h"
 #include "pages/settings_page.h"
 #include "pages/stats_page.h"
 
 UiPageRegistry UiPageRegistry::CreateDefault() {
     UiPageRegistry registry;
-    registry.Register(std::make_unique<OverviewPage>());
-    registry.Register(std::make_unique<RecentRecordsPage>());
     registry.Register(std::make_unique<StatsPage>());
+    registry.Register(std::make_unique<RecentRecordsPage>());
     registry.Register(std::make_unique<SettingsPage>());
     return registry;
 }

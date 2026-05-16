@@ -30,6 +30,7 @@ namespace {
 constexpr char kTag[] = "ZectrixBoard";
 
 constexpr uint8_t kFixedTemperatureCompensation = 244;
+constexpr int64_t kOpenSettingsLongPressUs = 1200000LL;
 
 class ZectrixEpaperDisplay : public Display {
 public:
@@ -442,6 +443,8 @@ struct ButtonState {
     InputKey key = InputKey::None;
     int level = 1;
     int64_t last_change_us = 0;
+    int64_t stable_pressed_us = 0;
+    bool press_dispatched = false;
 };
 
 class ZectrixBoard : public Board {
@@ -566,16 +569,46 @@ public:
             if (level != button.level) {
                 button.level = level;
                 button.last_change_us = now_us;
+                button.stable_pressed_us = 0;
+                button.press_dispatched = false;
                 continue;
             }
 
             if (level == 0 &&
                 button.last_change_us != 0 &&
+                button.stable_pressed_us == 0 &&
                 now_us - button.last_change_us >= static_cast<int64_t>(CONFIG_QUELLOG_INPUT_DEBOUNCE_MS) * 1000LL) {
-                button.last_change_us = 0;
-                event.key = button.key;
+                button.stable_pressed_us = button.last_change_us;
+            }
+        }
+
+        ButtonState& up_button = buttons_[0];
+        ButtonState& down_button = buttons_[1];
+        const bool up_pressed = up_button.stable_pressed_us != 0;
+        const bool down_pressed = down_button.stable_pressed_us != 0;
+
+        if (up_pressed && down_pressed) {
+            const int64_t combo_start_us = std::max(up_button.stable_pressed_us, down_button.stable_pressed_us);
+            if (!settings_combo_dispatched_ && now_us - combo_start_us >= kOpenSettingsLongPressUs) {
+                up_button.press_dispatched = true;
+                down_button.press_dispatched = true;
+                settings_combo_dispatched_ = true;
+                event.key = InputKey::OpenSettings;
                 return true;
             }
+            return false;
+        }
+
+        settings_combo_dispatched_ = false;
+
+        for (ButtonState& button : buttons_) {
+            if (button.stable_pressed_us == 0 || button.press_dispatched) {
+                continue;
+            }
+
+            button.press_dispatched = true;
+            event.key = button.key;
+            return true;
         }
         return false;
     }
@@ -733,6 +766,7 @@ private:
     std::atomic<NetworkState> network_state_{NetworkState::Unknown};
     NetworkEventCallback network_event_callback_;
     bool network_started_ = false;
+    bool settings_combo_dispatched_ = false;
 };
 
 }  // namespace

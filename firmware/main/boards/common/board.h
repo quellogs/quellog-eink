@@ -10,7 +10,8 @@ enum class InputKey {
     None = 0,
     Up,
     Down,
-    Confirm
+    Confirm,
+    OpenSettings
 };
 
 struct InputEvent {

@@ -3,13 +3,6 @@
 #include <algorithm>
 namespace {
 
-std::string FormatAmount(int64_t cents) {
-    const long long whole = static_cast<long long>(cents / 100);
-    const long long fraction = static_cast<long long>(cents % 100);
-    const long long abs_fraction = fraction < 0 ? -fraction : fraction;
-    return "CNY " + std::to_string(whole) + "." + (abs_fraction < 10 ? "0" : "") + std::to_string(abs_fraction);
-}
-
 std::vector<BarChartItem> BuildTopSpendingChartItems(const std::vector<CategorySummary>& categories) {
     std::vector<CategorySummary> sorted = categories;
     std::sort(sorted.begin(), sorted.end(), [](const CategorySummary& left, const CategorySummary& right) {
@@ -57,10 +50,6 @@ PageModel StatsPage::BuildModel(const AppContext& context) const {
             GetMaxAmountCents(items),
             true,
         });
-        model.text_blocks.push_back({"以下为分类汇总，超出前五项并入“其他”。"});
-        for (const CategorySummary& category : context.dashboard.categories) {
-            model.text_blocks.push_back({category.category + "  " + FormatAmount(category.amount_cents)});
-        }
     }
     return model;
 }

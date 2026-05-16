@@ -11,7 +11,6 @@ set(SOURCES
     "display/ui_page_registry.cc"
     "display/fonts/SourceHanSansSC_Medium_slim.c"
     "display/fonts/SourceHanSansSC_Regular_slim.c"
-    "display/pages/overview_page.cc"
     "display/pages/recent_records_page.cc"
     "display/pages/settings_page.cc"
     "display/pages/stats_page.cc"

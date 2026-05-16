@@ -25,6 +25,16 @@ struct TextBlockModel {
     TextAlign align = TextAlign::Left;
 };
 
+struct SplitViewMenuItem {
+    std::string text;
+    bool selected = false;
+};
+
+struct SplitViewModel {
+    std::vector<SplitViewMenuItem> menu_items;
+    std::vector<TextBlockModel> detail_blocks;
+};
+
 struct BarChartItem {
     std::string label;
     int64_t amount_cents = 0;
@@ -41,6 +51,7 @@ struct BarChartModel {
 struct PageModel {
     std::vector<TextBlockModel> text_blocks;
     std::vector<BarChartModel> bar_charts;
+    SplitViewModel split_view;
 };
 
 class Display {
@@ -70,6 +81,7 @@ protected:
     int MeasureTextWidth(const char* text) const;
     std::string FitText(const std::string& text, int max_width, const char* ellipsis = "...") const;
     void RenderBarChart(const BarChartModel& model, const Rect& rect);
+    void RenderSplitView(const SplitViewModel& model, int origin_y);
 
     int width_ = 0;
     int height_ = 0;
