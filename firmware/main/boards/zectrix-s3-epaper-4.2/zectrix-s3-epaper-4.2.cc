@@ -4,6 +4,7 @@
 #include <esp_adc/adc_cali_scheme.h>
 #include <esp_adc/adc_oneshot.h>
 #include <driver/gpio.h>
+#include <driver/ledc.h>
 #include <driver/spi_master.h>
 #include <esp_log.h>
 #include <esp_timer.h>
@@ -16,6 +17,7 @@
 #include <cassert>
 #include <cstdint>
 #include <cstring>
+#include <mutex>
 #include <vector>
 
 #include "board.h"
@@ -31,6 +33,12 @@ constexpr char kTag[] = "ZectrixBoard";
 
 constexpr uint8_t kFixedTemperatureCompensation = 244;
 constexpr int64_t kOpenSettingsLongPressUs = 1200000LL;
+constexpr int kChargeLedPwmResolutionBits = 10;
+constexpr int kChargeLedPwmMaxDuty = (1 << kChargeLedPwmResolutionBits) - 1;
+constexpr int kChargeLedPwmFrequencyHz = 5000;
+constexpr int kChargeLedBreathPeriodMs = 2400;
+constexpr int kChargeLedBreathStepMs = 40;
+constexpr int kChargeLedIdleDelayMs = 500;
 
 class ZectrixEpaperDisplay : public Display {
 public:
@@ -452,6 +460,7 @@ public:
     ZectrixBoard() {
         InitializeBatteryPower();
         InitializeChargeStatus();
+        InitializeChargeLed();
         ConfigureButton(buttons_[0], static_cast<gpio_num_t>(CONFIG_QUELLOG_BUTTON_UP_GPIO), InputKey::Up);
         ConfigureButton(buttons_[1], static_cast<gpio_num_t>(CONFIG_QUELLOG_BUTTON_DOWN_GPIO), InputKey::Down);
         ConfigureButton(buttons_[2], static_cast<gpio_num_t>(CONFIG_QUELLOG_BUTTON_CONFIRM_GPIO), InputKey::Confirm);
@@ -466,8 +475,12 @@ public:
     }
 
     bool GetBatteryLevel(int& level, bool& charging, bool& external_power) override {
-        charge_status_.Tick(GetNowMs());
-        const ChargeStatus::Snapshot snapshot = charge_status_.Get();
+        ChargeStatus::Snapshot snapshot = {};
+        {
+            std::lock_guard<std::mutex> lock(charge_status_mutex_);
+            charge_status_.Tick(GetNowMs());
+            snapshot = charge_status_.Get();
+        }
         charging = snapshot.charging;
         external_power = snapshot.power_present;
 
@@ -683,6 +696,108 @@ private:
         charge_status_.Init(QUELLOG_CHARGE_DETECT_GPIO, QUELLOG_CHARGE_FULL_GPIO, GetNowMs());
     }
 
+    void InitializeChargeLed() {
+        if (QUELLOG_CHARGE_LED_GPIO == GPIO_NUM_NC) {
+            return;
+        }
+
+        // 使用 LEDC PWM 驱动充电指示灯，便于实现充电时的呼吸灯效果。
+        ledc_timer_config_t timer_cfg = {};
+        timer_cfg.speed_mode = LEDC_LOW_SPEED_MODE;
+        timer_cfg.duty_resolution = LEDC_TIMER_10_BIT;
+        timer_cfg.timer_num = LEDC_TIMER_0;
+        timer_cfg.freq_hz = kChargeLedPwmFrequencyHz;
+        timer_cfg.clk_cfg = LEDC_AUTO_CLK;
+        ESP_ERROR_CHECK_WITHOUT_ABORT(ledc_timer_config(&timer_cfg));
+
+        ledc_channel_config_t channel_cfg = {};
+        channel_cfg.gpio_num = QUELLOG_CHARGE_LED_GPIO;
+        channel_cfg.speed_mode = LEDC_LOW_SPEED_MODE;
+        channel_cfg.channel = LEDC_CHANNEL_0;
+        channel_cfg.intr_type = LEDC_INTR_DISABLE;
+        channel_cfg.timer_sel = LEDC_TIMER_0;
+        channel_cfg.duty = PwmDutyFromBrightness(0);
+        channel_cfg.hpoint = 0;
+        ESP_ERROR_CHECK_WITHOUT_ABORT(ledc_channel_config(&channel_cfg));
+
+        SetChargeLedBrightness(0);
+        xTaskCreatePinnedToCore(&ZectrixBoard::ChargeLedTask, "ChargeLedTask", 3 * 1024, this, 2, nullptr, 0);
+    }
+
+    static uint32_t ClampChargeLedBrightness(uint32_t brightness) {
+        // 所有状态统一经过亮度限幅，避免满电常亮或呼吸峰值超过配置上限。
+        constexpr uint32_t max_brightness =
+            static_cast<uint32_t>((kChargeLedPwmMaxDuty * QUELLOG_CHARGE_LED_MAX_DUTY_PERCENT) / 100);
+        return std::min(brightness, max_brightness);
+    }
+
+    static uint32_t PwmDutyFromBrightness(uint32_t brightness) {
+        const uint32_t clamped = ClampChargeLedBrightness(brightness);
+        if (QUELLOG_CHARGE_LED_ACTIVE_LEVEL == 0) {
+            // 硬件为低电平点亮，业务亮度越高，对应 PWM duty 需要越低。
+            return kChargeLedPwmMaxDuty - clamped;
+        }
+        return clamped;
+    }
+
+    void SetChargeLedBrightness(uint32_t brightness) {
+        if (QUELLOG_CHARGE_LED_GPIO == GPIO_NUM_NC) {
+            return;
+        }
+
+        if (brightness == 0) {
+            // 熄灭时停止 PWM 并固定到关闭电平，避免低电平点亮 LED 因极窄脉冲产生微光。
+            constexpr uint32_t off_level = QUELLOG_CHARGE_LED_ACTIVE_LEVEL == 0 ? 1 : 0;
+            ESP_ERROR_CHECK_WITHOUT_ABORT(ledc_stop(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0, off_level));
+            return;
+        }
+
+        ESP_ERROR_CHECK_WITHOUT_ABORT(ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0, PwmDutyFromBrightness(brightness)));
+        ESP_ERROR_CHECK_WITHOUT_ABORT(ledc_update_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0));
+    }
+
+    void DelayChargeLedMs(int delay_ms) {
+        vTaskDelay(pdMS_TO_TICKS(delay_ms));
+    }
+
+    void BreatheChargeLed() {
+        constexpr int half_period_ms = kChargeLedBreathPeriodMs / 2;
+        constexpr int steps = std::max(1, half_period_ms / kChargeLedBreathStepMs);
+        const uint32_t max_brightness = ClampChargeLedBrightness(kChargeLedPwmMaxDuty);
+
+        // 采用三角波亮度曲线：先从灭渐亮到上限，再渐暗到灭。
+        for (int step = 0; step <= steps; ++step) {
+            SetChargeLedBrightness((max_brightness * step) / steps);
+            DelayChargeLedMs(kChargeLedBreathStepMs);
+        }
+        for (int step = steps - 1; step >= 0; --step) {
+            SetChargeLedBrightness((max_brightness * step) / steps);
+            DelayChargeLedMs(kChargeLedBreathStepMs);
+        }
+    }
+
+    static void ChargeLedTask(void* arg) {
+        auto* self = static_cast<ZectrixBoard*>(arg);
+        while (self != nullptr) {
+            ChargeStatus::Snapshot snapshot = {};
+            {
+                std::lock_guard<std::mutex> lock(self->charge_status_mutex_);
+                self->charge_status_.Tick(GetNowMs());
+                snapshot = self->charge_status_.Get();
+            }
+            if (snapshot.full) {
+                // 满电后常亮，但仍受 ClampChargeLedBrightness 的最高亮度限制。
+                self->SetChargeLedBrightness(kChargeLedPwmMaxDuty);
+                vTaskDelay(pdMS_TO_TICKS(kChargeLedIdleDelayMs));
+            } else if (snapshot.charging) {
+                self->BreatheChargeLed();
+            } else {
+                self->SetChargeLedBrightness(0);
+                vTaskDelay(pdMS_TO_TICKS(kChargeLedIdleDelayMs));
+            }
+        }
+    }
+
     uint16_t ReadBatteryVoltage() {
         static bool initialized = false;
         static adc_oneshot_unit_handle_t adc_handle = nullptr;
@@ -763,6 +878,7 @@ private:
     ZectrixEpaperDisplay display_;
     std::array<ButtonState, 3> buttons_ = {};
     ChargeStatus charge_status_;
+    std::mutex charge_status_mutex_;
     std::atomic<NetworkState> network_state_{NetworkState::Unknown};
     NetworkEventCallback network_event_callback_;
     bool network_started_ = false;
