@@ -44,6 +44,8 @@ struct AppContext {
     bool battery_known = false;
     int battery_level = 0;
     bool battery_charging = false;
+    bool battery_capacity_mah_known = false;
+    int battery_capacity_mah = 0;
     bool wifi_connected = false;
     bool wifi_connecting = false;
     bool wifi_config_mode = false;
@@ -54,6 +56,7 @@ struct AppContext {
     std::string page_title;
     std::string device_alias;
     std::string board_type;
+    std::string cpu_info;
     std::string device_uuid;
     std::string wifi_ssid;
     std::string wifi_ip;

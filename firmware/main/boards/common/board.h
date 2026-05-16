@@ -63,6 +63,7 @@ public:
 
     virtual std::string GetBoardType() = 0;
     virtual std::string GetUuid() const { return uuid_; }
+    virtual std::string GetCpuInfo() const;
     virtual Display* GetDisplay();
     virtual bool PollInput(InputEvent& event) = 0;
     virtual bool GetBatteryLevel(int& level) {
@@ -74,6 +75,10 @@ public:
         (void)level;
         (void)charging;
         (void)external_power;
+        return false;
+    }
+    virtual bool GetBatteryCapacityMah(int& capacity_mah) const {
+        (void)capacity_mah;
         return false;
     }
     virtual std::string GetSystemInfoJson();

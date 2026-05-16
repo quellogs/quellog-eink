@@ -314,6 +314,7 @@ AppContext Application::BuildContext() const {
     context.device_alias = device_alias_;
     context.board_type = board_.GetBoardType();
     context.device_uuid = board_.GetUuid();
+    context.cpu_info = board_.GetCpuInfo();
     context.wifi_connected = board_.IsWifiConnected();
     context.wifi_connecting = context.device_state == kDeviceStateWifiConnecting;
     context.wifi_config_mode = board_.IsWifiConfigMode();
@@ -342,6 +343,9 @@ AppContext Application::BuildContext() const {
     context.battery_known = board_.GetBatteryLevel(battery_level, battery_charging, battery_external_power);
     context.battery_level = battery_level;
     context.battery_charging = battery_charging;
+    int battery_capacity_mah = 0;
+    context.battery_capacity_mah_known = board_.GetBatteryCapacityMah(battery_capacity_mah);
+    context.battery_capacity_mah = battery_capacity_mah;
 
     const UiPage* page = pages_.Get(current_page_index_);
     context.page_title = page == nullptr ? "" : page->GetTitle();

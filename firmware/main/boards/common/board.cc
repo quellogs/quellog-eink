@@ -4,6 +4,7 @@
 #include <esp_chip_info.h>
 #include <esp_log.h>
 #include <esp_random.h>
+#include <sdkconfig.h>
 
 #include <cstdio>
 
@@ -36,6 +37,13 @@ std::string Board::GenerateUuid() {
 Display* Board::GetDisplay() {
     static NoDisplay display;
     return &display;
+}
+
+std::string Board::GetCpuInfo() const {
+    esp_chip_info_t chip_info = {};
+    esp_chip_info(&chip_info);
+
+    return std::string(CONFIG_IDF_TARGET) + "  " + std::to_string(chip_info.cores) + "核";
 }
 
 std::string Board::GetSystemInfoJson() {

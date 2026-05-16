@@ -198,8 +198,8 @@ void DrawText(Display* display, const lv_font_t* font, int start_x, int start_y,
         for (int row = 0; row < glyph.box_h; ++row) {
             for (int col = 0; col < glyph.box_w; ++col) {
                 const int bit_index = row * row_bits + col;
-                const bool black = (bitmap[bit_index >> 3] >> (7 - (bit_index & 0x07))) & 1U;
-                if (!black) {
+                const bool glyph_pixel_set = (bitmap[bit_index >> 3] >> (7 - (bit_index & 0x07))) & 1U;
+                if (!glyph_pixel_set) {
                     continue;
                 }
 

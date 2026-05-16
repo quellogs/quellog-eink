@@ -48,6 +48,16 @@ struct SplitViewDetailBar {
     int percent = 0;
 };
 
+struct SplitViewDetailItem {
+    std::string label;
+    std::string value;
+};
+
+struct SplitViewDetailSection {
+    std::string title;
+    std::vector<SplitViewDetailItem> items;
+};
+
 struct SplitViewMenuItem {
     std::string text;
     bool selected = false;
@@ -58,6 +68,7 @@ struct SplitViewModel {
     std::vector<SplitViewMenuItem> menu_items;
     std::vector<TextBlockModel> detail_blocks;
     std::vector<SplitViewDetailBar> detail_bars;
+    std::vector<SplitViewDetailSection> detail_sections;
 };
 
 struct BarChartItem {

@@ -21,6 +21,10 @@ constexpr int kSplitViewDetailBarGap = 12;
 constexpr int kSplitViewDetailBarLabelGap = 3;
 constexpr int kSplitViewDetailBarLabelPadding = 8;
 constexpr int kSplitViewDetailBarSectionGap = 8;
+constexpr int kSplitViewSectionGap = 10;
+constexpr int kSplitViewSectionHeaderHeight = 22;
+constexpr int kSplitViewSectionRowHeight = 26;
+constexpr int kSplitViewSectionPadding = 8;
 constexpr int kSplitViewMenuIconSize = 16;
 constexpr int kSplitViewMenuRadius = 6;
 constexpr int kSplitViewMenuTextHeight = 16;
@@ -712,5 +716,61 @@ void Display::RenderSplitView(const SplitViewModel& model, int origin_y) {
             FillRect({bar_rect.x + 1, bar_rect.y + 1, fill_width, ClampNonNegative(bar_rect.h - 2)});
         }
         detail_cursor_y += kSplitViewDetailBarHeight + kSplitViewDetailBarGap;
+    }
+
+    if ((!model.detail_blocks.empty() || !model.detail_bars.empty()) && !model.detail_sections.empty()) {
+        detail_cursor_y += kSplitViewSectionGap;
+    }
+
+    for (const SplitViewDetailSection& section : model.detail_sections) {
+        const int item_count = static_cast<int>(section.items.size());
+        const int section_height = kSplitViewSectionHeaderHeight + (item_count * kSplitViewSectionRowHeight);
+        if (detail_cursor_y + section_height > detail_rect.y + detail_rect.h - kSplitViewDetailPadding) {
+            break;
+        }
+
+        const Rect section_rect = {
+            detail_rect.x + kSplitViewDetailPadding,
+            detail_cursor_y,
+            detail_text_width,
+            section_height
+        };
+        DrawRect(section_rect);
+        FillRect({section_rect.x, section_rect.y, section_rect.w, kSplitViewSectionHeaderHeight});
+
+        const std::string fitted_title = FitText(section.title, section_rect.w - (kSplitViewSectionPadding * 2));
+        DrawText({section_rect.x + kSplitViewSectionPadding,
+                  section_rect.y + 3,
+                  section_rect.w - (kSplitViewSectionPadding * 2),
+                  kLineHeight},
+                 fitted_title.c_str(),
+                 TextAlign::Left,
+                 PixelColor::White);
+
+        int row_y = section_rect.y + kSplitViewSectionHeaderHeight;
+        const int label_width = std::max(52, section_rect.w / 3);
+        for (const SplitViewDetailItem& item : section.items) {
+            if (row_y > section_rect.y + kSplitViewSectionHeaderHeight) {
+                DrawLine(section_rect.x + kSplitViewSectionPadding,
+                         row_y,
+                         section_rect.x + section_rect.w - kSplitViewSectionPadding,
+                         row_y);
+            }
+
+            const int value_x = section_rect.x + kSplitViewSectionPadding + label_width;
+            const int value_width =
+                ClampNonNegative(section_rect.w - (kSplitViewSectionPadding * 2) - label_width);
+            const std::string fitted_label = FitText(item.label, label_width - 4);
+            const std::string fitted_value = FitText(item.value, value_width);
+            DrawText({section_rect.x + kSplitViewSectionPadding, row_y + 5, label_width - 4, kLineHeight},
+                     fitted_label.c_str(),
+                     TextAlign::Left);
+            DrawText({value_x, row_y + 5, value_width, kLineHeight},
+                     fitted_value.c_str(),
+                     TextAlign::Right);
+            row_y += kSplitViewSectionRowHeight;
+        }
+
+        detail_cursor_y += section_height + kSplitViewSectionGap;
     }
 }

@@ -111,20 +111,31 @@ void AppendStorageBlocks(const AppContext& context, SplitViewModel* split_view) 
     });
 }
 
-void AppendDeviceInfoBlocks(const AppContext& context, std::vector<TextBlockModel>* blocks) {
-    if (blocks == nullptr) {
+void AppendDeviceInfoSections(const AppContext& context, SplitViewModel* split_view) {
+    if (split_view == nullptr) {
         return;
     }
 
-    blocks->push_back({"设备别名  " + context.device_alias});
-    blocks->push_back({"板型  " + context.board_type});
-    blocks->push_back({"UUID  " + context.device_uuid});
+    split_view->detail_sections.push_back({
+        "设备",
+        {
+            {"设备名称", context.device_alias},
+            {"型号", context.board_type},
+            {"CPU", context.cpu_info},
+        },
+    });
+
+    SplitViewDetailSection battery_section;
+    battery_section.title = "电池";
     if (context.battery_known) {
-        blocks->push_back({"电量  " + std::to_string(context.battery_level) + "%"});
-        blocks->push_back({context.battery_charging ? "电池状态  充电中" : "电池状态  未充电"});
+        battery_section.items.push_back({"电量", std::to_string(context.battery_level) + "%"});
     } else {
-        blocks->push_back({"电量  暂不可用"});
+        battery_section.items.push_back({"电量", "暂不可用"});
     }
+    if (context.battery_capacity_mah_known) {
+        battery_section.items.push_back({"容量", std::to_string(context.battery_capacity_mah) + "mAh"});
+    }
+    split_view->detail_sections.push_back(battery_section);
 }
 
 }  // namespace
@@ -154,7 +165,7 @@ PageModel SettingsPage::BuildModel(const AppContext& context) const {
             AppendStorageBlocks(context, &model.split_view);
             break;
         case 4:
-            AppendDeviceInfoBlocks(context, &model.split_view.detail_blocks);
+            AppendDeviceInfoSections(context, &model.split_view);
             break;
         default:
             AppendWifiStatusBlocks(context, &model.split_view.detail_blocks);
