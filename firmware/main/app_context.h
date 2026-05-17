@@ -79,6 +79,8 @@ struct AppContext {
     int settings_wifi_focus_index = 0;
     bool settings_wifi_ap_modal_visible = false;
     bool settings_wifi_connecting_modal_visible = false;
+    bool settings_restart_modal_visible = false;
+    bool settings_restart_confirm_focused = false;
     WifiSettingsMode wifi_mode = WifiSettingsMode::Off;
     std::string pending_wifi_config_ssid;
     std::vector<WifiNetworkInfo> wifi_networks;

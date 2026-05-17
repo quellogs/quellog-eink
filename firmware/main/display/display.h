@@ -35,6 +35,7 @@ enum class SplitViewMenuIcon {
     Sound,
     Storage,
     Device,
+    Power,
 };
 
 struct TextBlockModel {

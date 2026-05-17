@@ -232,6 +232,25 @@ constexpr uint16_t kDeviceIconRows[] = {
     0b0000000000000000,
 };
 
+constexpr uint16_t kPowerIconRows[] = {
+    0b0000000000000000,
+    0b0000000110000000,
+    0b0000000110000000,
+    0b0001100110011000,
+    0b0011100110011100,
+    0b0011000110001100,
+    0b0111000110001110,
+    0b0110000110000110,
+    0b0110000110000110,
+    0b0110000000000110,
+    0b0110000000000110,
+    0b0111000000001110,
+    0b0011100000011100,
+    0b0001111001111000,
+    0b0000111111110000,
+    0b0000001111000000,
+};
+
 }  // namespace
 
 void Display::RenderPage(const PageModel& model, const TopStatusBarState& top_status_bar) {
@@ -502,6 +521,9 @@ void Display::DrawMenuIcon(SplitViewMenuIcon icon, const Rect& rect, PixelColor 
             break;
         case SplitViewMenuIcon::Device:
             DrawIconMask(kDeviceIconRows, static_cast<int>(std::size(kDeviceIconRows)), rect, color);
+            break;
+        case SplitViewMenuIcon::Power:
+            DrawIconMask(kPowerIconRows, static_cast<int>(std::size(kPowerIconRows)), rect, color);
             break;
         case SplitViewMenuIcon::None:
         default:

@@ -225,6 +225,24 @@ void AppendDeviceInfoSections(const AppContext& context, SplitViewModel* split_v
     split_view->detail_sections.push_back(battery_section);
 }
 
+void AppendRestartDetail(const AppContext& context, SplitViewModel* split_view, ModalModel* modal) {
+    if (split_view == nullptr) {
+        return;
+    }
+
+    split_view->detail_blocks.push_back({"按确认键后重启当前设备。"});
+
+    if (modal == nullptr || !context.settings_restart_modal_visible) {
+        return;
+    }
+
+    modal->visible = true;
+    modal->title = "重启设备";
+    modal->message = "确认立即重启设备？";
+    modal->options.push_back({"取消", !context.settings_restart_confirm_focused, !context.settings_restart_confirm_focused});
+    modal->options.push_back({"确认重启", context.settings_restart_confirm_focused, context.settings_restart_confirm_focused});
+}
+
 }  // namespace
 
 PageModel SettingsPage::BuildModel(const AppContext& context) const {
@@ -235,6 +253,7 @@ PageModel SettingsPage::BuildModel(const AppContext& context) const {
         {"声音", context.settings_selected_item == 2, SplitViewMenuIcon::Sound},
         {"存储空间", context.settings_selected_item == 3, SplitViewMenuIcon::Storage},
         {"设备信息", context.settings_selected_item == 4, SplitViewMenuIcon::Device},
+        {"重启设备", context.settings_selected_item == 5, SplitViewMenuIcon::Power},
     };
 
     switch (context.settings_selected_item) {
@@ -254,6 +273,9 @@ PageModel SettingsPage::BuildModel(const AppContext& context) const {
             break;
         case 4:
             AppendDeviceInfoSections(context, &model.split_view);
+            break;
+        case 5:
+            AppendRestartDetail(context, &model.split_view, &model.modal);
             break;
         default:
             AppendWifiSettingsDetail(context, &model.split_view);

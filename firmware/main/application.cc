@@ -1,6 +1,7 @@
 #include "application.h"
 
 #include <esp_log.h>
+#include <esp_system.h>
 #include <esp_timer.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
@@ -19,7 +20,8 @@ constexpr int kSettingsItemBluetooth = 1;
 constexpr int kSettingsItemSound = 2;
 constexpr int kSettingsItemStorage = 3;
 constexpr int kSettingsItemDeviceInfo = 4;
-constexpr int kSettingsItemCount = 5;
+constexpr int kSettingsItemRestart = 5;
+constexpr int kSettingsItemCount = 6;
 constexpr int kVolumeStepPercent = 10;
 constexpr int64_t kBatteryStatusCheckIntervalUs = 3 * 1000 * 1000;
 
@@ -77,6 +79,23 @@ void Application::Run() {
 
 void Application::HandleInput(const InputEvent& event) {
     if (IsSettingsPage()) {
+        if (settings_restart_modal_visible_) {
+            switch (event.key) {
+                case InputKey::Up:
+                case InputKey::Down:
+                    ToggleRestartModalFocus();
+                    return;
+                case InputKey::Confirm:
+                    ExecuteRestartModalFocus();
+                    return;
+                case InputKey::OpenSettings:
+                    CloseRestartModal();
+                    return;
+                case InputKey::None:
+                    return;
+            }
+        }
+
         if (settings_selected_item_ == kSettingsItemWifi) {
             if (settings_wifi_connecting_modal_visible_) {
                 return;
@@ -162,6 +181,8 @@ void Application::OpenSettingsPage() {
     settings_wifi_focus_index_ = 0;
     settings_wifi_ap_modal_visible_ = false;
     settings_wifi_connecting_modal_visible_ = false;
+    settings_restart_modal_visible_ = false;
+    settings_restart_confirm_focused_ = false;
     settings_wifi_cached_networks_.clear();
     current_page_index_ = pages_.Count() - kSettingsPageOffsetFromEnd;
     UpdateDeviceState();
@@ -172,6 +193,8 @@ void Application::CloseSettingsPage() {
     const int browseable_page_count = std::max(1, pages_.Count() - 1);
     settings_wifi_ap_modal_visible_ = false;
     settings_wifi_connecting_modal_visible_ = false;
+    settings_restart_modal_visible_ = false;
+    settings_restart_confirm_focused_ = false;
     settings_wifi_cached_networks_.clear();
     current_page_index_ = std::clamp(settings_return_page_index_, 0, browseable_page_count - 1);
     SaveSettings();
@@ -229,6 +252,8 @@ void Application::PreviousPage() {
 void Application::NextSettingsItem() {
     settings_wifi_ap_modal_visible_ = false;
     settings_wifi_connecting_modal_visible_ = false;
+    settings_restart_modal_visible_ = false;
+    settings_restart_confirm_focused_ = false;
     settings_wifi_cached_networks_.clear();
     settings_selected_item_ = (settings_selected_item_ + 1) % kSettingsItemCount;
     RenderCurrentPage(false);
@@ -237,6 +262,8 @@ void Application::NextSettingsItem() {
 void Application::PreviousSettingsItem() {
     settings_wifi_ap_modal_visible_ = false;
     settings_wifi_connecting_modal_visible_ = false;
+    settings_restart_modal_visible_ = false;
+    settings_restart_confirm_focused_ = false;
     settings_wifi_cached_networks_.clear();
     settings_selected_item_ = (settings_selected_item_ + kSettingsItemCount - 1) % kSettingsItemCount;
     RenderCurrentPage(false);
@@ -266,6 +293,8 @@ void Application::PreviousWifiFocus() {
 void Application::CloseWifiApModal() {
     settings_wifi_ap_modal_visible_ = false;
     settings_wifi_connecting_modal_visible_ = false;
+    settings_restart_modal_visible_ = false;
+    settings_restart_confirm_focused_ = false;
     board_.StopNetwork();
     board_.StartNetwork();
     settings_wifi_cached_networks_.clear();
@@ -307,9 +336,45 @@ void Application::ExecuteSettingsItem() {
         }
         case kSettingsItemStorage:
         case kSettingsItemDeviceInfo:
+            break;
+        case kSettingsItemRestart:
+            settings_restart_modal_visible_ = true;
+            settings_restart_confirm_focused_ = false;
+            RenderCurrentPage(false);
+            break;
         default:
             break;
     }
+}
+
+void Application::CloseRestartModal() {
+    settings_restart_modal_visible_ = false;
+    settings_restart_confirm_focused_ = false;
+    RenderCurrentPage(false);
+}
+
+void Application::ToggleRestartModalFocus() {
+    settings_restart_confirm_focused_ = !settings_restart_confirm_focused_;
+    RenderCurrentPage(false);
+}
+
+void Application::ExecuteRestartModalFocus() {
+    if (!settings_restart_confirm_focused_) {
+        CloseRestartModal();
+        return;
+    }
+    RequestDeviceRestart();
+}
+
+void Application::RequestDeviceRestart() {
+    settings_restart_modal_visible_ = false;
+    settings_restart_confirm_focused_ = false;
+    if (display_ != nullptr) {
+        display_->ShowNotification("正在重启...");
+    }
+    RenderCurrentPage(true);
+    vTaskDelay(pdMS_TO_TICKS(300));
+    esp_restart();
 }
 
 void Application::ExecuteWifiFocus() {
@@ -472,6 +537,8 @@ AppContext Application::BuildContext() const {
     context.settings_wifi_focus_index = std::clamp(settings_wifi_focus_index_, 0, std::max(0, GetWifiFocusItemCount() - 1));
     context.settings_wifi_ap_modal_visible = settings_wifi_ap_modal_visible_;
     context.settings_wifi_connecting_modal_visible = settings_wifi_connecting_modal_visible_;
+    context.settings_restart_modal_visible = settings_restart_modal_visible_;
+    context.settings_restart_confirm_focused = settings_restart_confirm_focused_;
     context.wifi_mode = GetCurrentWifiSettingsMode();
     context.pending_wifi_config_ssid = board_.GetPendingWifiConfigSsid();
     const std::vector<BoardWifiNetwork> wifi_networks =

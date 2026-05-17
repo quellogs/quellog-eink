@@ -39,6 +39,10 @@ private:
     void PreviousWifiFocus();
     void ExecuteWifiFocus();
     void CloseWifiApModal();
+    void CloseRestartModal();
+    void ToggleRestartModalFocus();
+    void ExecuteRestartModalFocus();
+    void RequestDeviceRestart();
     void TriggerRefresh();
     void ExecuteSettingsItem();
     int GetWifiFocusItemCount() const;
@@ -69,6 +73,8 @@ private:
     int settings_wifi_focus_index_ = 0;
     bool settings_wifi_ap_modal_visible_ = false;
     bool settings_wifi_connecting_modal_visible_ = false;
+    bool settings_restart_modal_visible_ = false;
+    bool settings_restart_confirm_focused_ = false;
     std::vector<BoardWifiNetwork> settings_wifi_cached_networks_;
     int settings_return_page_index_ = 0;
     int64_t last_battery_status_check_us_ = 0;
