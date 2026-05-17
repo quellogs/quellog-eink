@@ -1,7 +1,8 @@
 idf_component_register(
     SRCS
-        "main.cc"
+        "settings.cc"
+    INCLUDE_DIRS
+        "include"
     REQUIRES
         nvs_flash
-        quellog_app
 )

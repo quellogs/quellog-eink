@@ -1,0 +1,21 @@
+idf_component_register(
+    SRCS
+        "display.cc"
+        "lvgl_text_renderer.cc"
+        "top_status_bar.cc"
+        "fonts/SourceHanSansSC_Medium_slim.c"
+        "fonts/SourceHanSansSC_Regular_slim.c"
+    INCLUDE_DIRS
+        "include"
+        "include/display"
+    REQUIRES
+        esp_timer
+        lvgl
+        qrcode
+)
+
+target_compile_definitions(
+    ${COMPONENT_LIB}
+    PRIVATE
+    LV_LVGL_H_INCLUDE_SIMPLE
+)

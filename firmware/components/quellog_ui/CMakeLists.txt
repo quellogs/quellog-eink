@@ -1,0 +1,13 @@
+idf_component_register(
+    SRCS
+        "ui_page_registry.cc"
+        "pages/recent_records_page.cc"
+        "pages/settings_page.cc"
+        "pages/stats_page.cc"
+    INCLUDE_DIRS
+        "include"
+        "include/display"
+        "include/display/pages"
+    REQUIRES
+        quellog_display
+)

@@ -1,0 +1,16 @@
+idf_component_register(
+    SRCS
+        "application.cc"
+        "application_context.cc"
+        "application_controls.cc"
+        "application_settings.cc"
+        "dashboard_data_provider.cc"
+    INCLUDE_DIRS
+        "include"
+    REQUIRES
+        esp_timer
+        quellog_board
+        quellog_display
+        quellog_storage
+        quellog_ui
+)

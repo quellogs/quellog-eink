@@ -51,7 +51,6 @@ private:
     void LoadSettings();
     void SaveSettings();
     int NormalizeSavedPageIndex(int saved_page_index) const;
-    void SeedMockData();
     AppContext BuildContext() const;
     TopStatusBarState BuildTopStatusBarState(const AppContext& context) const;
     bool ShouldAutoRefresh(int64_t now_us) const;

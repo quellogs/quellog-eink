@@ -15,10 +15,12 @@
 
 ## 目录
 
-- `main/application.*`：应用状态机、设备状态与页面切换
-- `main/display/*`：显示抽象、页面模型、页面注册
-- `main/boards/*`：板级抽象与默认板型实现
-- `main/settings.*`：NVS 配置读写
+- `main/main.cc`：ESP-IDF 启动入口，只负责初始化 NVS 并启动应用
+- `components/quellog_app/*`：应用状态机、输入分发、设备状态与页面切换
+- `components/quellog_ui/*`：页面注册、页面模型构建与应用上下文类型
+- `components/quellog_display/*`：显示抽象、顶部状态栏、图表/弹窗渲染与字体资源
+- `components/quellog_board/*`：板级抽象、默认板型实现、按键/电池/蓝牙/存储适配
+- `components/quellog_storage/*`：NVS 配置读写封装
 - `components/quellog_wifi/*`：Wi‑Fi 管理、SoftAP 配网、DNS captive portal、凭据保存
 
 ## 配网说明

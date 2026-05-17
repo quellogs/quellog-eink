@@ -1,0 +1,29 @@
+idf_component_register(
+    SRCS
+        "board.cc"
+        "boards/zectrix-s3-epaper-4.2/charge_status.cc"
+        "boards/zectrix-s3-epaper-4.2/zectrix-s3-epaper-4.2.cc"
+    INCLUDE_DIRS
+        "include"
+        "include/boards/common"
+    PRIV_INCLUDE_DIRS
+        "boards/zectrix-s3-epaper-4.2"
+    REQUIRES
+        bt
+        driver
+        esp_adc
+        esp_app_format
+        esp_partition
+        esp_timer
+        nvs_flash
+        quellog_display
+        quellog_storage
+        quellog_wifi
+        spi_flash
+)
+
+target_compile_definitions(
+    ${COMPONENT_LIB}
+    PRIVATE
+    BOARD_NAME=\"zectrix-s3-epaper-4.2\"
+)
