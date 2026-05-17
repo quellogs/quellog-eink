@@ -10,6 +10,7 @@ struct TopStatusBarState {
     bool wifi_visible = false;
     bool wifi_connected = false;
     bool hotspot_visible = false;
+    bool bluetooth_visible = false;
     bool battery_visible = false;
     int battery_level = 0;
     bool battery_charging = false;

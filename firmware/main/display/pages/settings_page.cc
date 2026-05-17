@@ -1,5 +1,6 @@
 #include "settings_page.h"
 
+#include <algorithm>
 #include <string>
 
 namespace {
@@ -42,12 +43,26 @@ std::string BuildOpenWifiQrPayload(const std::string& ssid) {
     return "WIFI:T:nopass;S:" + EscapeWifiQrField(ssid) + ";;";
 }
 
+std::string BuildBluetoothDeviceName(const std::string& uuid) {
+    std::string compact_uuid;
+    compact_uuid.reserve(uuid.size());
+    for (char ch : uuid) {
+        if (ch != '-') {
+            compact_uuid.push_back(ch);
+        }
+    }
+
+    const size_t suffix_length = std::min<size_t>(6, compact_uuid.size());
+    return "Quellog-" + compact_uuid.substr(compact_uuid.size() - suffix_length);
+}
+
 void AppendWifiSettingsDetail(const AppContext& context, SplitViewModel* split_view) {
     if (split_view == nullptr) {
         return;
     }
 
     split_view->wifi_switch_visible = true;
+    split_view->wifi_switch_label = "无线网络";
     split_view->wifi_switch_on = context.wifi_enabled;
     split_view->wifi_switch_focused = context.settings_wifi_focus_index == 0;
 
@@ -118,18 +133,35 @@ void AppendWifiConnectingModal(const AppContext& context, ModalModel* modal) {
     modal->options.push_back({"请稍候，连接成功后自动关闭", true, false});
 }
 
-void AppendBluetoothBlocks(const AppContext& context, std::vector<TextBlockModel>* blocks) {
-    if (blocks == nullptr) {
+void AppendBluetoothSettingsDetail(const AppContext& context, SplitViewModel* split_view) {
+    if (split_view == nullptr) {
         return;
     }
 
     if (!context.bluetooth_available) {
-        blocks->push_back({"状态  不可用"});
-        blocks->push_back({"当前固件未启用蓝牙组件。"});
+        split_view->detail_blocks.push_back({"状态  不可用"});
+        split_view->detail_blocks.push_back({"当前固件未启用蓝牙组件。"});
         return;
     }
-    blocks->push_back({context.bluetooth_enabled ? "状态  已开启" : "状态  已关闭"});
-    blocks->push_back({"确认键可切换蓝牙开关。"});
+
+    split_view->wifi_switch_visible = true;
+    split_view->wifi_switch_label = "蓝牙";
+    split_view->wifi_switch_on = context.bluetooth_enabled;
+    split_view->wifi_switch_focused = true;
+
+    if (!context.bluetooth_enabled) {
+        split_view->detail_blocks.push_back({"开启后设备将通过 BLE 广播。"});
+        return;
+    }
+
+    split_view->detail_sections.push_back({
+        "蓝牙信息",
+        {
+            {"名称", BuildBluetoothDeviceName(context.device_uuid)},
+            {"状态", "已开启，可被扫描发现"},
+            {"模式", "BLE"},
+        },
+    });
 }
 
 void AppendSoundBlocks(const AppContext& context, std::vector<TextBlockModel>* blocks) {
@@ -212,7 +244,7 @@ PageModel SettingsPage::BuildModel(const AppContext& context) const {
             AppendWifiConnectingModal(context, &model.modal);
             break;
         case 1:
-            AppendBluetoothBlocks(context, &model.split_view.detail_blocks);
+            AppendBluetoothSettingsDetail(context, &model.split_view);
             break;
         case 2:
             AppendSoundBlocks(context, &model.split_view.detail_blocks);

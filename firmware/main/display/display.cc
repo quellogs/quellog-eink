@@ -616,7 +616,7 @@ void Display::RenderWifiSwitch(const SplitViewModel& model, const Rect& rect) {
     }
 
     DrawText({rect.x + 8, rect.y + 8, rect.w - kWifiSwitchWidth - 22, kLineHeight},
-             "无线网络",
+             model.wifi_switch_label.c_str(),
              TextAlign::Left,
              foreground_color);
 

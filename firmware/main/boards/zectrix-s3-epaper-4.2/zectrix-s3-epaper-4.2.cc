@@ -2,6 +2,20 @@
 
 #include <esp_adc/adc_cali.h>
 #include <esp_adc/adc_cali_scheme.h>
+#if CONFIG_BT_ENABLED && CONFIG_BT_NIMBLE_ENABLED
+#include <host/ble_gap.h>
+#include <host/ble_hs.h>
+#include <host/ble_hs_adv.h>
+#include <nimble/nimble_port.h>
+#include <nimble/nimble_port_freertos.h>
+#include <services/gap/ble_svc_gap.h>
+#ifdef min
+#undef min
+#endif
+#ifdef max
+#undef max
+#endif
+#endif
 #include <esp_adc/adc_oneshot.h>
 #include <driver/gpio.h>
 #include <driver/ledc.h>
@@ -45,6 +59,7 @@ constexpr int kChargeLedBreathPeriodMs = 2400;
 constexpr int kChargeLedBreathStepMs = 40;
 constexpr int kChargeLedIdleDelayMs = 500;
 constexpr int kDefaultVolumePercent = 50;
+constexpr char kBluetoothEnabledSettingsKey[] = "bt_enabled";
 
 class ZectrixEpaperDisplay : public Display {
 public:
@@ -461,6 +476,178 @@ struct ButtonState {
     bool press_dispatched = false;
 };
 
+#if CONFIG_BT_ENABLED && CONFIG_BT_NIMBLE_ENABLED
+class BleAdvertiser {
+public:
+    bool SetEnabled(bool enabled, const std::string& device_name) {
+        if (enabled) {
+            return Start(device_name);
+        }
+        return Stop();
+    }
+
+    bool IsEnabled() const {
+        return enabled_;
+    }
+
+private:
+    bool Start(const std::string& device_name) {
+        if (enabled_) {
+            return true;
+        }
+
+        device_name_ = device_name.empty() ? "Quellog" : device_name;
+        active_instance_ = this;
+
+        esp_err_t err = nimble_port_init();
+        if (err != ESP_OK) {
+            ESP_LOGE(kTag, "nimble init failed: %s", esp_err_to_name(err));
+            active_instance_ = nullptr;
+            return false;
+        }
+
+        nimble_initialized_ = true;
+        ble_hs_cfg.sync_cb = &BleAdvertiser::OnSync;
+        ble_hs_cfg.reset_cb = &BleAdvertiser::OnReset;
+        ble_svc_gap_init();
+
+        const int name_rc = ble_svc_gap_device_name_set(device_name_.c_str());
+        if (name_rc != 0) {
+            ESP_LOGE(kTag, "ble device name set failed: %d", name_rc);
+            Stop();
+            return false;
+        }
+
+        enabled_ = true;
+        nimble_port_freertos_init(&BleAdvertiser::HostTask);
+        host_task_started_ = true;
+        ESP_LOGI(kTag, "ble enabled as %s", device_name_.c_str());
+        return true;
+    }
+
+    bool Stop() {
+        enabled_ = false;
+
+        if (advertising_) {
+            const int adv_rc = ble_gap_adv_stop();
+            if (adv_rc != 0 && adv_rc != BLE_HS_EALREADY) {
+                ESP_LOGW(kTag, "ble adv stop failed: %d", adv_rc);
+            }
+            advertising_ = false;
+        }
+
+        if (host_task_started_) {
+            const int stop_rc = nimble_port_stop();
+            if (stop_rc != 0) {
+                ESP_LOGW(kTag, "nimble stop failed: %d", stop_rc);
+            }
+            host_task_started_ = false;
+        }
+
+        if (nimble_initialized_) {
+            const esp_err_t err = nimble_port_deinit();
+            if (err != ESP_OK) {
+                ESP_LOGW(kTag, "nimble deinit failed: %s", esp_err_to_name(err));
+                return false;
+            }
+            nimble_initialized_ = false;
+        }
+
+        if (active_instance_ == this) {
+            active_instance_ = nullptr;
+        }
+        ESP_LOGI(kTag, "ble disabled");
+        return true;
+    }
+
+    bool StartAdvertising() {
+        uint8_t own_addr_type = 0;
+        int rc = ble_hs_id_infer_auto(0, &own_addr_type);
+        if (rc != 0) {
+            ESP_LOGE(kTag, "ble address infer failed: %d", rc);
+            return false;
+        }
+
+        ble_hs_adv_fields fields = {};
+        fields.flags = BLE_HS_ADV_F_DISC_GEN | BLE_HS_ADV_F_BREDR_UNSUP;
+        fields.name = reinterpret_cast<const uint8_t*>(device_name_.c_str());
+        fields.name_len = static_cast<uint8_t>(std::min<size_t>(device_name_.size(), UINT8_MAX));
+        fields.name_is_complete = 1;
+
+        rc = ble_gap_adv_set_fields(&fields);
+        if (rc != 0) {
+            ESP_LOGE(kTag, "ble adv fields set failed: %d", rc);
+            return false;
+        }
+
+        ble_gap_adv_params params = {};
+        params.conn_mode = BLE_GAP_CONN_MODE_UND;
+        params.disc_mode = BLE_GAP_DISC_MODE_GEN;
+
+        rc = ble_gap_adv_start(own_addr_type, nullptr, BLE_HS_FOREVER, &params, &BleAdvertiser::OnGapEvent, this);
+        if (rc != 0) {
+            ESP_LOGE(kTag, "ble adv start failed: %d", rc);
+            return false;
+        }
+
+        advertising_ = true;
+        return true;
+    }
+
+    static void HostTask(void* param) {
+        (void)param;
+        nimble_port_run();
+        nimble_port_freertos_deinit();
+    }
+
+    static void OnSync() {
+        if (active_instance_ != nullptr && active_instance_->enabled_) {
+            active_instance_->StartAdvertising();
+        }
+    }
+
+    static void OnReset(int reason) {
+        ESP_LOGW(kTag, "ble reset: %d", reason);
+    }
+
+    static int OnGapEvent(ble_gap_event* event, void* arg) {
+        auto* self = static_cast<BleAdvertiser*>(arg);
+        if (self == nullptr) {
+            return 0;
+        }
+
+        switch (event->type) {
+            case BLE_GAP_EVENT_CONNECT:
+                self->advertising_ = false;
+                if (event->connect.status != 0 && self->enabled_) {
+                    self->StartAdvertising();
+                }
+                break;
+            case BLE_GAP_EVENT_DISCONNECT:
+            case BLE_GAP_EVENT_ADV_COMPLETE:
+                self->advertising_ = false;
+                if (self->enabled_) {
+                    self->StartAdvertising();
+                }
+                break;
+            default:
+                break;
+        }
+        return 0;
+    }
+
+    static BleAdvertiser* active_instance_;
+
+    std::string device_name_;
+    bool enabled_ = false;
+    bool nimble_initialized_ = false;
+    bool host_task_started_ = false;
+    bool advertising_ = false;
+};
+
+BleAdvertiser* BleAdvertiser::active_instance_ = nullptr;
+#endif
+
 class ZectrixBoard : public Board {
 public:
     ZectrixBoard() {
@@ -730,7 +917,7 @@ public:
     }
 
     bool IsBluetoothAvailable() const override {
-#if CONFIG_BT_ENABLED
+#if CONFIG_BT_ENABLED && CONFIG_BT_NIMBLE_ENABLED
         return true;
 #else
         return false;
@@ -746,8 +933,25 @@ public:
             bluetooth_enabled_ = false;
             return false;
         }
+
+#if CONFIG_BT_ENABLED && CONFIG_BT_NIMBLE_ENABLED
+        if (enabled == bluetooth_enabled_) {
+            return true;
+        }
+
+        const bool ok = ble_advertiser_.SetEnabled(enabled, BuildBluetoothDeviceName(GetUuid()));
+        if (!ok) {
+            return false;
+        }
+
         bluetooth_enabled_ = enabled;
+        Settings settings("app", true);
+        settings.SetInt(kBluetoothEnabledSettingsKey, bluetooth_enabled_ ? 1 : 0);
         return true;
+#else
+        (void)enabled;
+        return false;
+#endif
     }
 
     int GetVolumePercent() const override {
@@ -798,6 +1002,26 @@ private:
         Settings settings("app");
         volume_percent_ = std::clamp(
             static_cast<int>(settings.GetInt("volume_percent", kDefaultVolumePercent)), 0, 100);
+
+        const bool saved_bluetooth_enabled = settings.GetInt(kBluetoothEnabledSettingsKey, 0) != 0;
+        if (saved_bluetooth_enabled && IsBluetoothAvailable()) {
+#if CONFIG_BT_ENABLED && CONFIG_BT_NIMBLE_ENABLED
+            bluetooth_enabled_ = ble_advertiser_.SetEnabled(true, BuildBluetoothDeviceName(GetUuid()));
+#endif
+        }
+    }
+
+    static std::string BuildBluetoothDeviceName(const std::string& uuid) {
+        std::string compact_uuid;
+        compact_uuid.reserve(uuid.size());
+        for (char ch : uuid) {
+            if (ch != '-') {
+                compact_uuid.push_back(ch);
+            }
+        }
+
+        const size_t suffix_length = std::min<size_t>(6, compact_uuid.size());
+        return "Quellog-" + compact_uuid.substr(compact_uuid.size() - suffix_length);
     }
 
     void InitializeBatteryPower() {
@@ -1011,6 +1235,9 @@ private:
     std::atomic<NetworkState> network_state_{NetworkState::Unknown};
     NetworkEventCallback network_event_callback_;
     bool network_started_ = false;
+#if CONFIG_BT_ENABLED && CONFIG_BT_NIMBLE_ENABLED
+    BleAdvertiser ble_advertiser_;
+#endif
     bool bluetooth_enabled_ = false;
     int volume_percent_ = kDefaultVolumePercent;
     bool settings_combo_dispatched_ = false;

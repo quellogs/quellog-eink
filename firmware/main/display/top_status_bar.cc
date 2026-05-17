@@ -13,6 +13,7 @@ constexpr int kItemSpacing = 8;
 constexpr int kSeparatorOffset = 1;
 constexpr int kTitleHeight = 20;
 constexpr int kWifiIconWidth = 18;
+constexpr int kBluetoothIconWidth = 14;
 constexpr int kBatteryIconWidth = 24;
 constexpr int kBatteryIconHeight = 12;
 constexpr int kHotspotBadgeWidth = 24;
@@ -33,6 +34,23 @@ void DrawWifiIcon(Display* display, int x, int center_y, bool connected) {
     if (!connected) {
         display->DrawLine(x + 1, center_y + 7, x + 15, center_y - 7);
     }
+}
+
+void DrawBluetoothIcon(Display* display, int x, int center_y) {
+    if (display == nullptr) {
+        return;
+    }
+
+    const int mid_x = x + (kBluetoothIconWidth / 2);
+    const int top_y = center_y - 8;
+    const int bottom_y = center_y + 8;
+    display->DrawLine(mid_x, top_y, mid_x, bottom_y);
+    display->DrawLine(mid_x, top_y, x + kBluetoothIconWidth - 2, center_y - 3);
+    display->DrawLine(x + kBluetoothIconWidth - 2, center_y - 3, mid_x, center_y);
+    display->DrawLine(mid_x, center_y, x + kBluetoothIconWidth - 2, center_y + 3);
+    display->DrawLine(x + kBluetoothIconWidth - 2, center_y + 3, mid_x, bottom_y);
+    display->DrawLine(x + 2, center_y - 5, mid_x, center_y);
+    display->DrawLine(mid_x, center_y, x + 2, center_y + 5);
 }
 
 void DrawChargingBolt(Display* display, int x, int y) {
@@ -97,6 +115,12 @@ void TopStatusBar::Render(Display* display, const TopStatusBarState& state) cons
         display->DrawRect({right_x, center_y - (kHotspotBadgeHeight / 2), kHotspotBadgeWidth, kHotspotBadgeHeight});
         display->DrawText({right_x, center_y - (kHotspotBadgeHeight / 2), kHotspotBadgeWidth, kHotspotBadgeHeight},
                           "AP", TextAlign::Center);
+        right_x -= kItemSpacing;
+    }
+
+    if (state.bluetooth_visible) {
+        right_x -= kBluetoothIconWidth;
+        DrawBluetoothIcon(display, right_x, center_y);
         right_x -= kItemSpacing;
     }
 

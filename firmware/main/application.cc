@@ -513,6 +513,7 @@ TopStatusBarState Application::BuildTopStatusBarState(const AppContext& context)
     state.wifi_visible = context.wifi_enabled;
     state.wifi_connected = context.wifi_connected;
     state.hotspot_visible = context.wifi_config_mode;
+    state.bluetooth_visible = context.bluetooth_enabled;
     state.battery_visible = context.battery_known;
     state.battery_level = context.battery_level;
     state.battery_charging = context.battery_charging;

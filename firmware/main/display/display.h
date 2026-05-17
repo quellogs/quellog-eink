@@ -88,6 +88,7 @@ struct SplitViewModel {
     bool wifi_switch_visible = false;
     bool wifi_switch_on = false;
     bool wifi_switch_focused = false;
+    std::string wifi_switch_label = "无线网络";
     std::vector<WifiListItemModel> wifi_items;
 };
 

@@ -25,6 +25,7 @@ idf_component_register(
         "display/pages"
     REQUIRES
         driver
+        bt
         esp_adc
         esp_app_format
         esp_partition
