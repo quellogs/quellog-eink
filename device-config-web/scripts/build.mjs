@@ -9,11 +9,13 @@ const tempRootDir = resolve(rootDir, ".vite-build");
 function inlineBuiltHtml(outDir, htmlFileName) {
   const htmlPath = resolve(outDir, htmlFileName);
   let html = readFileSync(htmlPath, "utf-8");
+  const inlineScripts = [];
 
   html = html.replace(/<script[^>]*src="([^"]+)"[^>]*><\/script>/g, (_, src) => {
     const scriptPath = resolve(outDir, src);
     const code = readFileSync(scriptPath, "utf-8");
-    return `<script>${code}</script>`;
+    inlineScripts.push(`<script>${code}</script>`);
+    return "";
   });
 
   html = html.replace(/<link[^>]*href="([^"]+)"[^>]*>/g, (fullMatch, href) => {
@@ -24,6 +26,10 @@ function inlineBuiltHtml(outDir, htmlFileName) {
     const css = readFileSync(stylePath, "utf-8");
     return `<style>${css}</style>`;
   });
+
+  if (inlineScripts.length > 0) {
+    html = html.replace("</body>", `${inlineScripts.join("\n")}\n  </body>`);
+  }
 
   return html;
 }

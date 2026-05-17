@@ -31,6 +31,7 @@ idf_component_register(
         esp_timer
         lvgl
         nvs_flash
+        qrcode
         quellog_wifi
         spi_flash
 )

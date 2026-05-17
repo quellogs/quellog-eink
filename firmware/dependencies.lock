@@ -1,4 +1,11 @@
 dependencies:
+  espressif/qrcode:
+    component_hash: 31e70991ce22f28d73a4386417fc9c0993f61e1aab1832474fd9e3db8da9dcbd
+    dependencies: []
+    source:
+      registry_url: https://components.espressif.com/
+      type: service
+    version: 0.2.0
   idf:
     source:
       type: idf
@@ -11,7 +18,8 @@ dependencies:
       type: service
     version: 9.3.0
 direct_dependencies:
+- espressif/qrcode
 - lvgl/lvgl
-manifest_hash: 4fd38525b59730fc94ffe656d4e27bc0decf298ed121b4830fb3302618bded13
+manifest_hash: 75dbf20683d5f93c8d87c731c21c3ecc24d39d2ac70319ab71bd796cffbd4c55
 target: esp32s3
 version: 2.0.0

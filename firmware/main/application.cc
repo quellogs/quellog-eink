@@ -77,6 +77,42 @@ void Application::Run() {
 
 void Application::HandleInput(const InputEvent& event) {
     if (IsSettingsPage()) {
+        if (settings_selected_item_ == kSettingsItemWifi) {
+            if (settings_wifi_connecting_modal_visible_) {
+                return;
+            }
+
+            if (settings_wifi_ap_modal_visible_) {
+                switch (event.key) {
+                    case InputKey::Confirm:
+                    case InputKey::OpenSettings:
+                        CloseWifiApModal();
+                        return;
+                    case InputKey::Up:
+                    case InputKey::Down:
+                    case InputKey::None:
+                        return;
+                }
+            }
+
+            switch (event.key) {
+                case InputKey::Up:
+                    PreviousWifiFocus();
+                    return;
+                case InputKey::Down:
+                    NextWifiFocus();
+                    return;
+                case InputKey::Confirm:
+                    ExecuteWifiFocus();
+                    return;
+                case InputKey::OpenSettings:
+                    CloseSettingsPage();
+                    return;
+                case InputKey::None:
+                    return;
+            }
+        }
+
         switch (event.key) {
             case InputKey::Up:
                 PreviousSettingsItem();
@@ -123,6 +159,10 @@ void Application::OpenSettingsPage() {
         settings_return_page_index_ = std::clamp(current_page_index_, 0, browseable_page_count - 1);
     }
     settings_selected_item_ = 0;
+    settings_wifi_focus_index_ = 0;
+    settings_wifi_ap_modal_visible_ = false;
+    settings_wifi_connecting_modal_visible_ = false;
+    settings_wifi_cached_networks_.clear();
     current_page_index_ = pages_.Count() - kSettingsPageOffsetFromEnd;
     UpdateDeviceState();
     RenderCurrentPage(false);
@@ -130,6 +170,9 @@ void Application::OpenSettingsPage() {
 
 void Application::CloseSettingsPage() {
     const int browseable_page_count = std::max(1, pages_.Count() - 1);
+    settings_wifi_ap_modal_visible_ = false;
+    settings_wifi_connecting_modal_visible_ = false;
+    settings_wifi_cached_networks_.clear();
     current_page_index_ = std::clamp(settings_return_page_index_, 0, browseable_page_count - 1);
     SaveSettings();
     UpdateDeviceState();
@@ -184,13 +227,50 @@ void Application::PreviousPage() {
 }
 
 void Application::NextSettingsItem() {
+    settings_wifi_ap_modal_visible_ = false;
+    settings_wifi_connecting_modal_visible_ = false;
+    settings_wifi_cached_networks_.clear();
     settings_selected_item_ = (settings_selected_item_ + 1) % kSettingsItemCount;
     RenderCurrentPage(false);
 }
 
 void Application::PreviousSettingsItem() {
+    settings_wifi_ap_modal_visible_ = false;
+    settings_wifi_connecting_modal_visible_ = false;
+    settings_wifi_cached_networks_.clear();
     settings_selected_item_ = (settings_selected_item_ + kSettingsItemCount - 1) % kSettingsItemCount;
     RenderCurrentPage(false);
+}
+
+void Application::NextWifiFocus() {
+    const int item_count = GetWifiFocusItemCount();
+    settings_wifi_focus_index_ = item_count > 0 ? (settings_wifi_focus_index_ + 1) % item_count : 0;
+    if (settings_wifi_focus_index_ == 0) {
+        NextSettingsItem();
+        return;
+    }
+    RenderCurrentPage(false);
+}
+
+void Application::PreviousWifiFocus() {
+    if (settings_wifi_focus_index_ == 0) {
+        PreviousSettingsItem();
+        return;
+    }
+    const int item_count = GetWifiFocusItemCount();
+    settings_wifi_focus_index_ =
+        item_count > 0 ? (settings_wifi_focus_index_ + item_count - 1) % item_count : 0;
+    RenderCurrentPage(false);
+}
+
+void Application::CloseWifiApModal() {
+    settings_wifi_ap_modal_visible_ = false;
+    settings_wifi_connecting_modal_visible_ = false;
+    board_.StopNetwork();
+    board_.StartNetwork();
+    settings_wifi_cached_networks_.clear();
+    network_state_dirty_.store(true, std::memory_order_release);
+    RenderCurrentPage(true);
 }
 
 void Application::TriggerRefresh() {
@@ -205,20 +285,7 @@ void Application::TriggerRefresh() {
 void Application::ExecuteSettingsItem() {
     switch (settings_selected_item_) {
         case kSettingsItemWifi:
-            if (board_.IsWifiEnabled()) {
-                board_.StopNetwork();
-                network_state_dirty_.store(true, std::memory_order_release);
-                if (display_ != nullptr) {
-                    display_->ShowNotification("WiFi 已关闭");
-                }
-            } else {
-                board_.StartNetwork();
-                network_state_dirty_.store(true, std::memory_order_release);
-                if (display_ != nullptr) {
-                    display_->ShowNotification("WiFi 已开启");
-                }
-            }
-            RenderCurrentPage(true);
+            ExecuteWifiFocus();
             break;
         case kSettingsItemBluetooth: {
             const bool next_enabled = !board_.IsBluetoothEnabled();
@@ -243,6 +310,80 @@ void Application::ExecuteSettingsItem() {
         default:
             break;
     }
+}
+
+void Application::ExecuteWifiFocus() {
+    if (settings_wifi_focus_index_ <= 0) {
+        if (board_.IsWifiEnabled()) {
+            board_.StopNetwork();
+            settings_wifi_focus_index_ = 0;
+            settings_wifi_ap_modal_visible_ = false;
+            settings_wifi_connecting_modal_visible_ = false;
+            settings_wifi_cached_networks_.clear();
+            network_state_dirty_.store(true, std::memory_order_release);
+            if (display_ != nullptr) {
+                display_->ShowNotification("无线网络已关闭");
+            }
+            RenderCurrentPage(true);
+            return;
+        }
+
+        board_.StartNetwork();
+        network_state_dirty_.store(true, std::memory_order_release);
+        if (display_ != nullptr) {
+            display_->ShowNotification("WiFi 已开启");
+        }
+        RenderCurrentPage(true);
+        return;
+    }
+
+    const std::vector<BoardWifiNetwork> networks = board_.GetScannedWifiNetworks();
+    const int network_index = settings_wifi_focus_index_ - 1;
+    if (network_index < 0 || network_index >= static_cast<int>(networks.size())) {
+        settings_wifi_focus_index_ = 0;
+        RenderCurrentPage(false);
+        return;
+    }
+
+    const BoardWifiNetwork& selected = networks[network_index];
+    if (selected.secure) {
+        settings_wifi_cached_networks_ = networks;
+        board_.PrepareWifiConfigForSsid(selected.ssid);
+        settings_wifi_ap_modal_visible_ = true;
+        settings_wifi_connecting_modal_visible_ = false;
+        network_state_dirty_.store(true, std::memory_order_release);
+        if (display_ != nullptr) {
+            display_->ShowNotification("AP 配网已开启");
+        }
+        RenderCurrentPage(true);
+        return;
+    }
+
+    if (board_.ConnectToOpenWifi(selected.ssid) && display_ != nullptr) {
+        display_->ShowNotification("正在连接开放网络");
+    }
+    network_state_dirty_.store(true, std::memory_order_release);
+    RenderCurrentPage(true);
+}
+
+int Application::GetWifiFocusItemCount() const {
+    if (!board_.IsWifiEnabled()) {
+        return 1;
+    }
+    if (settings_wifi_ap_modal_visible_) {
+        return 1 + static_cast<int>(settings_wifi_cached_networks_.size());
+    }
+    return 1 + static_cast<int>(board_.GetScannedWifiNetworks().size());
+}
+
+WifiSettingsMode Application::GetCurrentWifiSettingsMode() const {
+    if (!board_.IsWifiEnabled()) {
+        return WifiSettingsMode::Off;
+    }
+    if (board_.IsWifiConfigMode()) {
+        return WifiSettingsMode::Ap;
+    }
+    return WifiSettingsMode::Station;
 }
 
 bool Application::IsSettingsPage() const {
@@ -328,6 +469,20 @@ AppContext Application::BuildContext() const {
     context.wifi_ap_url = board_.GetWifiConfigApUrl();
     context.settings_selected_item = settings_selected_item_;
     context.settings_item_count = kSettingsItemCount;
+    context.settings_wifi_focus_index = std::clamp(settings_wifi_focus_index_, 0, std::max(0, GetWifiFocusItemCount() - 1));
+    context.settings_wifi_ap_modal_visible = settings_wifi_ap_modal_visible_;
+    context.settings_wifi_connecting_modal_visible = settings_wifi_connecting_modal_visible_;
+    context.wifi_mode = GetCurrentWifiSettingsMode();
+    context.pending_wifi_config_ssid = board_.GetPendingWifiConfigSsid();
+    const std::vector<BoardWifiNetwork> wifi_networks =
+        context.settings_wifi_ap_modal_visible ? settings_wifi_cached_networks_ : board_.GetScannedWifiNetworks();
+    for (const BoardWifiNetwork& network : wifi_networks) {
+        context.wifi_networks.push_back({
+            network.ssid,
+            network.rssi,
+            network.secure,
+        });
+    }
     const BoardStorageInfo storage = board_.GetStorageInfo();
     context.storage.available = storage.available;
     context.storage.flash_total_kb = storage.flash_total_kb;
@@ -355,7 +510,8 @@ AppContext Application::BuildContext() const {
 TopStatusBarState Application::BuildTopStatusBarState(const AppContext& context) const {
     TopStatusBarState state;
     state.title = context.page_title;
-    state.wifi_visible = context.wifi_connected;
+    state.wifi_visible = context.wifi_enabled;
+    state.wifi_connected = context.wifi_connected;
     state.hotspot_visible = context.wifi_config_mode;
     state.battery_visible = context.battery_known;
     state.battery_level = context.battery_level;
@@ -400,11 +556,32 @@ void Application::HandleNetworkEvent(NetworkEvent event, const std::string& data
     (void)data;
     switch (event) {
         case NetworkEvent::Scanning:
+            break;
         case NetworkEvent::Connecting:
+            if (settings_wifi_connecting_modal_visible_) {
+                network_state_dirty_.store(true, std::memory_order_release);
+            }
+            break;
         case NetworkEvent::Connected:
+            settings_wifi_ap_modal_visible_ = false;
+            settings_wifi_connecting_modal_visible_ = false;
+            network_state_dirty_.store(true, std::memory_order_release);
+            break;
         case NetworkEvent::Disconnected:
+            network_state_dirty_.store(true, std::memory_order_release);
+            break;
         case NetworkEvent::WifiConfigModeEnter:
+            settings_wifi_connecting_modal_visible_ = false;
+            if (settings_selected_item_ == kSettingsItemWifi) {
+                settings_wifi_ap_modal_visible_ = true;
+            }
+            network_state_dirty_.store(true, std::memory_order_release);
+            break;
         case NetworkEvent::WifiConfigModeExit:
+            if (settings_wifi_ap_modal_visible_) {
+                settings_wifi_ap_modal_visible_ = false;
+                settings_wifi_connecting_modal_visible_ = true;
+            }
             network_state_dirty_.store(true, std::memory_order_release);
             break;
     }

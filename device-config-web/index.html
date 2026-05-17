@@ -6,34 +6,18 @@
     <title>Quellog 配网</title>
   </head>
   <body>
-    <main class="shell shell-home">
-      <section class="hero">
-        <p class="eyebrow">QUELLOG NETWORK SETUP</p>
-        <h1>为设备接入你的 Wi‑Fi</h1>
-        <p class="hero-copy">
-          选择附近网络或手动输入 SSID。提交后，设备会验证凭据并自动退出当前热点。
-        </p>
-        <div class="hero-note">
-          <span class="note-dot"></span>
-          <span>浏览器如果稍后断开当前热点，属于正常现象。</span>
-        </div>
-      </section>
+    <main class="eink-shell">
+      <section class="eink-panel">
+        <header class="eink-header">
+          <p class="eyebrow">QUELLOG</p>
+          <h1>Wi-Fi 配网</h1>
+        </header>
 
-      <section class="panel">
-        <div class="panel-header">
-          <div>
-            <p class="panel-kicker">Step 1</p>
-            <h2>选择网络</h2>
-          </div>
-          <button id="refresh" class="ghost-button" type="button">重新扫描</button>
-        </div>
-
-        <label class="field">
-          <span>附近网络</span>
-          <select id="ssid-list" autocomplete="off">
-            <option value="">正在扫描...</option>
-          </select>
-        </label>
+        <section id="selected-network" class="selected-network" data-state="loading">
+          <span class="selected-label">墨水屏选择</span>
+          <strong id="selected-ssid">读取中</strong>
+          <span id="selected-source" class="selected-source">正在读取设备上的目标网络</span>
+        </section>
 
         <label class="field">
           <span>Wi‑Fi 名称</span>
@@ -65,20 +49,6 @@
 
         <button id="submit" class="primary-button" type="button">保存并连接</button>
         <p id="status" class="status" role="status" aria-live="polite"></p>
-      </section>
-
-      <section class="panel saved-panel">
-        <div class="panel-header">
-          <div>
-            <p class="panel-kicker">Step 2</p>
-            <h2>已保存网络</h2>
-          </div>
-          <p class="panel-meta">最多保存 5 组，启动后自动连接当前最强信号。</p>
-        </div>
-
-        <ul id="saved-list" class="saved-list" aria-live="polite">
-          <li class="saved-empty">正在加载已保存网络...</li>
-        </ul>
       </section>
     </main>
     <script type="module" src="/src/index.js"></script>

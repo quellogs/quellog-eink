@@ -34,6 +34,16 @@ export async function loadCredentials() {
   return parseJsonResponse(response);
 }
 
+export async function loadSetupContext() {
+  const response = await fetch("/setup-context", {
+    cache: "no-store",
+    headers: {
+      Accept: "application/json"
+    }
+  });
+  return parseJsonResponse(response);
+}
+
 export async function submitCredentials(ssid, password) {
   const response = await fetch("/submit", {
     method: "POST",

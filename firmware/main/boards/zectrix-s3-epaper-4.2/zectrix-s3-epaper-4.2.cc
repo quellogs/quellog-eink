@@ -10,6 +10,7 @@
 #include <esp_log.h>
 #include <esp_partition.h>
 #include <esp_timer.h>
+#include <esp_wifi_types.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include <nvs.h>
@@ -567,13 +568,11 @@ public:
             }
         });
 
-        if (SsidManager::GetInstance().GetSsidList().empty()) {
-            network_state_.store(NetworkState::ConfigMode, std::memory_order_release);
-            WifiManager::GetInstance().StartConfigAp();
-        } else {
-            network_state_.store(NetworkState::Connecting, std::memory_order_release);
-            WifiManager::GetInstance().StartStation();
-        }
+        const bool has_saved_credentials = !SsidManager::GetInstance().GetSsidList().empty();
+        network_state_.store(
+            has_saved_credentials ? NetworkState::Connecting : NetworkState::Scanning,
+            std::memory_order_release);
+        WifiManager::GetInstance().StartStation();
         network_started_ = true;
     }
 
@@ -649,9 +648,53 @@ public:
     void EnterWifiConfigMode() override {
         if (!network_started_) {
             StartNetwork();
-            return;
         }
         WifiManager::GetInstance().StartConfigAp();
+    }
+
+    bool ConnectToOpenWifi(const std::string& ssid) override {
+        if (!network_started_) {
+            StartNetwork();
+        }
+        return WifiManager::GetInstance().ConnectToOpenWifi(ssid);
+    }
+
+    void PrepareWifiConfigForSsid(const std::string& ssid) override {
+        if (!network_started_) {
+            StartNetwork();
+        }
+        WifiManager::GetInstance().PrepareConfigApForSsid(ssid);
+    }
+
+    std::vector<BoardWifiNetwork> GetScannedWifiNetworks() const override {
+        std::vector<BoardWifiNetwork> networks;
+        std::vector<wifi_ap_record_t> records = WifiManager::GetInstance().GetAccessPoints();
+        std::sort(records.begin(), records.end(), [](const wifi_ap_record_t& lhs, const wifi_ap_record_t& rhs) {
+            return lhs.rssi > rhs.rssi;
+        });
+
+        for (const wifi_ap_record_t& record : records) {
+            const std::string ssid = reinterpret_cast<const char*>(record.ssid);
+            if (ssid.empty()) {
+                continue;
+            }
+            auto existing = std::find_if(networks.begin(), networks.end(), [&ssid](const BoardWifiNetwork& item) {
+                return item.ssid == ssid;
+            });
+            if (existing != networks.end()) {
+                continue;
+            }
+            networks.push_back({
+                ssid,
+                record.rssi,
+                record.authmode != WIFI_AUTH_OPEN,
+            });
+        }
+        return networks;
+    }
+
+    std::string GetPendingWifiConfigSsid() const override {
+        return WifiManager::GetInstance().GetPendingConfigSsid();
     }
 
     bool IsWifiConnected() const override {

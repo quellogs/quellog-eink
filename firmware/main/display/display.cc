@@ -2,6 +2,7 @@
 #include "lvgl_text_renderer.h"
 
 #include <esp_log.h>
+#include <qrcode.h>
 
 #include <algorithm>
 #include <cstdlib>
@@ -21,6 +22,10 @@ constexpr int kSplitViewDetailBarGap = 12;
 constexpr int kSplitViewDetailBarLabelGap = 3;
 constexpr int kSplitViewDetailBarLabelPadding = 8;
 constexpr int kSplitViewDetailBarSectionGap = 8;
+constexpr int kSplitViewDetailOptionHeight = 28;
+constexpr int kSplitViewDetailOptionGap = 4;
+constexpr int kSplitViewDetailOptionMarkSize = 10;
+constexpr int kSplitViewQrGap = 8;
 constexpr int kSplitViewSectionGap = 10;
 constexpr int kSplitViewSectionHeaderHeight = 22;
 constexpr int kSplitViewSectionRowHeight = 26;
@@ -28,6 +33,18 @@ constexpr int kSplitViewSectionPadding = 8;
 constexpr int kSplitViewMenuIconSize = 16;
 constexpr int kSplitViewMenuRadius = 6;
 constexpr int kSplitViewMenuTextHeight = 16;
+constexpr int kWifiSwitchRowHeight = 34;
+constexpr int kWifiSwitchWidth = 42;
+constexpr int kWifiSwitchHeight = 20;
+constexpr int kWifiListItemHeight = 28;
+constexpr int kWifiSignalIconWidth = 18;
+constexpr int kModalWidth = 300;
+constexpr int kModalPadding = 12;
+constexpr int kModalTitleHeight = 20;
+constexpr int kModalMessageHeight = 16;
+constexpr int kModalOptionHeight = 28;
+constexpr int kModalOptionGap = 4;
+constexpr int kModalQrSize = 104;
 constexpr int kChartBottomLabelHeight = 18;
 constexpr int kChartAmountHeight = 14;
 constexpr int kChartGap = 5;
@@ -69,6 +86,54 @@ bool ShouldShowAmountLabel(const BarChartModel& model, int item_index) {
             return item_index == model.highlight_item_index || item_index == model.secondary_highlight_item_index;
         default:
             return false;
+    }
+}
+
+struct QrRenderContext {
+    Display* display = nullptr;
+    Rect rect;
+    int module_count = 0;
+    int module_scale = 0;
+    int origin_x = 0;
+    int origin_y = 0;
+};
+
+void RenderQrCodeModule(esp_qrcode_handle_t qrcode, void* user_data) {
+    QrRenderContext* context = static_cast<QrRenderContext*>(user_data);
+    if (context == nullptr || context->display == nullptr) {
+        return;
+    }
+
+    const int qrcode_size = esp_qrcode_get_size(qrcode);
+    constexpr int kQuietZoneModules = 4;
+    context->module_count = qrcode_size + (kQuietZoneModules * 2);
+    context->module_scale =
+        std::max(1, std::min(context->rect.w, context->rect.h) / context->module_count);
+    const int draw_size = context->module_count * context->module_scale;
+    context->origin_x = context->rect.x + ((context->rect.w - draw_size) / 2);
+    context->origin_y = context->rect.y + ((context->rect.h - draw_size) / 2);
+
+    for (int y = 0; y < draw_size; ++y) {
+        for (int x = 0; x < draw_size; ++x) {
+            context->display->SetPixel(context->origin_x + x, context->origin_y + y, false);
+        }
+    }
+
+    const int quiet_zone = kQuietZoneModules;
+    for (int module_y = 0; module_y < qrcode_size; ++module_y) {
+        for (int module_x = 0; module_x < qrcode_size; ++module_x) {
+            if (!esp_qrcode_get_module(qrcode, module_x, module_y)) {
+                continue;
+            }
+
+            const int pixel_x = context->origin_x + ((module_x + quiet_zone) * context->module_scale);
+            const int pixel_y = context->origin_y + ((module_y + quiet_zone) * context->module_scale);
+            for (int y = 0; y < context->module_scale; ++y) {
+                for (int x = 0; x < context->module_scale; ++x) {
+                    context->display->SetPixel(pixel_x + x, pixel_y + y, true);
+                }
+            }
+        }
     }
 }
 
@@ -181,6 +246,7 @@ void Display::RenderPage(const PageModel& model, const TopStatusBarState& top_st
 
     if (!model.split_view.menu_items.empty()) {
         RenderSplitView(model.split_view, cursor_y);
+        RenderModal(model.modal);
         EndPage();
         return;
     }
@@ -205,6 +271,7 @@ void Display::RenderPage(const PageModel& model, const TopStatusBarState& top_st
         cursor_y += kLineHeight;
     }
 
+    RenderModal(model.modal);
     EndPage();
 }
 
@@ -506,6 +573,119 @@ void Display::FillRectPattern(const Rect& rect, int step_x, int step_y) {
     }
 }
 
+void Display::RenderQrCode(const std::string& payload, const Rect& rect) {
+    if (payload.empty() || rect.w <= 0 || rect.h <= 0) {
+        return;
+    }
+
+    QrRenderContext context;
+    context.display = this;
+    context.rect = rect;
+
+    esp_qrcode_config_t config = {};
+    config.display_func_with_cb = RenderQrCodeModule;
+    config.max_qrcode_version = 10;
+    config.qrcode_ecc_level = ESP_QRCODE_ECC_LOW;
+    config.user_data = &context;
+
+    const esp_err_t result = esp_qrcode_generate(&config, payload.c_str());
+    if (result != ESP_OK) {
+        ESP_LOGW(kTag, "qrcode generate failed: %s", esp_err_to_name(result));
+        return;
+    }
+
+    const int qrcode_size = context.module_count;
+    if (qrcode_size <= 0 || context.module_scale <= 0) {
+        return;
+    }
+
+    const int draw_size = qrcode_size * context.module_scale;
+    DrawRect({context.origin_x - 1, context.origin_y - 1, draw_size + 2, draw_size + 2});
+}
+
+void Display::RenderWifiSwitch(const SplitViewModel& model, const Rect& rect) {
+    if (!model.wifi_switch_visible || rect.w <= 0 || rect.h <= 0) {
+        return;
+    }
+
+    const PixelColor foreground_color = model.wifi_switch_focused ? PixelColor::White : PixelColor::Black;
+    if (model.wifi_switch_focused) {
+        FillRoundedRect(rect, kSplitViewMenuRadius, PixelColor::Black);
+    } else {
+        DrawRect(rect);
+    }
+
+    DrawText({rect.x + 8, rect.y + 8, rect.w - kWifiSwitchWidth - 22, kLineHeight},
+             "无线网络",
+             TextAlign::Left,
+             foreground_color);
+
+    const Rect switch_rect = {
+        rect.x + rect.w - kWifiSwitchWidth - 8,
+        rect.y + ((rect.h - kWifiSwitchHeight) / 2),
+        kWifiSwitchWidth,
+        kWifiSwitchHeight
+    };
+    DrawRectWithColor(switch_rect, foreground_color);
+    const int knob_size = kWifiSwitchHeight - 6;
+    const int knob_x = model.wifi_switch_on
+        ? switch_rect.x + switch_rect.w - knob_size - 3
+        : switch_rect.x + 3;
+    FillCircle(knob_x + (knob_size / 2),
+               switch_rect.y + (switch_rect.h / 2),
+               knob_size / 2,
+               foreground_color);
+    if (model.wifi_switch_on) {
+        DrawText({switch_rect.x, switch_rect.y + 2, switch_rect.w, kLineHeight},
+                 "ON",
+                 TextAlign::Center,
+                 foreground_color);
+    }
+}
+
+void Display::DrawWifiSignalIcon(int x, int y, int rssi, PixelColor color) {
+    const int bars = rssi >= -55 ? 4 : (rssi >= -67 ? 3 : (rssi >= -78 ? 2 : 1));
+    constexpr int bar_width = 3;
+    constexpr int bar_gap = 2;
+    for (int index = 0; index < 4; ++index) {
+        const int bar_height = 4 + (index * 3);
+        const Rect bar = {
+            x + (index * (bar_width + bar_gap)),
+            y + 14 - bar_height,
+            bar_width,
+            bar_height
+        };
+        if (index < bars) {
+            FillRectWithColor(bar, color);
+        } else {
+            DrawRectWithColor(bar, color);
+        }
+    }
+}
+
+void Display::RenderWifiListItem(const WifiListItemModel& item, const Rect& rect) {
+    const PixelColor foreground_color = item.focused ? PixelColor::White : PixelColor::Black;
+    if (item.focused) {
+        FillRoundedRect(rect, kSplitViewMenuRadius, PixelColor::Black);
+    } else {
+        DrawRect(rect);
+    }
+
+    DrawWifiSignalIcon(rect.x + 8, rect.y + 7, item.rssi, foreground_color);
+    const int lock_width = item.secure ? 14 : 0;
+    const int text_x = rect.x + 8 + kWifiSignalIconWidth + 8;
+    const int text_width = ClampNonNegative(rect.w - (text_x - rect.x) - lock_width - 12);
+    const std::string fitted_ssid = FitText(item.ssid, text_width);
+    DrawText({text_x, rect.y + 6, text_width, kLineHeight}, fitted_ssid.c_str(), TextAlign::Left, foreground_color);
+    if (item.secure) {
+        const int lock_x = rect.x + rect.w - 18;
+        DrawRectWithColor({lock_x, rect.y + 12, 10, 8}, foreground_color);
+        DrawLineWithColor(lock_x + 2, rect.y + 12, lock_x + 2, rect.y + 9, foreground_color);
+        DrawLineWithColor(lock_x + 7, rect.y + 12, lock_x + 7, rect.y + 9, foreground_color);
+        DrawLineWithColor(lock_x + 2, rect.y + 9, lock_x + 7, rect.y + 9, foreground_color);
+    }
+}
+
 void Display::RenderSummaryMetrics(const std::vector<SummaryMetricModel>& metrics, int* cursor_y) {
     if (cursor_y == nullptr || metrics.empty()) {
         return;
@@ -660,6 +840,57 @@ void Display::RenderSplitView(const SplitViewModel& model, int origin_y) {
 
     int detail_cursor_y = detail_rect.y + kSplitViewDetailPadding;
     const int detail_text_width = ClampNonNegative(detail_rect.w - (kSplitViewDetailPadding * 2));
+    if (model.wifi_switch_visible) {
+        RenderWifiSwitch(model,
+                         {detail_rect.x + kSplitViewDetailPadding,
+                          detail_cursor_y,
+                          detail_text_width,
+                          kWifiSwitchRowHeight});
+        detail_cursor_y += kWifiSwitchRowHeight + kSplitViewDetailOptionGap;
+    }
+
+    for (const SplitViewDetailOption& option : model.detail_options) {
+        if (detail_cursor_y + kSplitViewDetailOptionHeight > detail_rect.y + detail_rect.h - kSplitViewDetailPadding) {
+            break;
+        }
+
+        const Rect option_rect = {
+            detail_rect.x + kSplitViewDetailPadding,
+            detail_cursor_y,
+            detail_text_width,
+            kSplitViewDetailOptionHeight
+        };
+        const PixelColor foreground_color = option.focused ? PixelColor::White : PixelColor::Black;
+        if (option.focused) {
+            FillRoundedRect(option_rect, kSplitViewMenuRadius, PixelColor::Black);
+        } else {
+            DrawRect(option_rect);
+        }
+
+        const Rect mark_rect = {
+            option_rect.x + 8,
+            option_rect.y + ((option_rect.h - kSplitViewDetailOptionMarkSize) / 2),
+            kSplitViewDetailOptionMarkSize,
+            kSplitViewDetailOptionMarkSize
+        };
+        DrawRectWithColor(mark_rect, foreground_color);
+        if (option.selected) {
+            FillRectWithColor({mark_rect.x + 2, mark_rect.y + 2, mark_rect.w - 4, mark_rect.h - 4}, foreground_color);
+        }
+
+        const int text_x = mark_rect.x + mark_rect.w + 8;
+        const std::string fitted_label = FitText(option.label, option_rect.x + option_rect.w - text_x - 8);
+        DrawText({text_x, option_rect.y + 6, option_rect.x + option_rect.w - text_x - 8, kLineHeight},
+                 fitted_label.c_str(),
+                 TextAlign::Left,
+                 foreground_color);
+        detail_cursor_y += kSplitViewDetailOptionHeight + kSplitViewDetailOptionGap;
+    }
+
+    if (!model.detail_options.empty() && !model.detail_blocks.empty()) {
+        detail_cursor_y += kSplitViewDetailOptionGap;
+    }
+
     for (const TextBlockModel& block : model.detail_blocks) {
         if (detail_cursor_y + kLineHeight > detail_rect.y + detail_rect.h - kSplitViewDetailPadding) {
             break;
@@ -670,55 +901,25 @@ void Display::RenderSplitView(const SplitViewModel& model, int origin_y) {
                  block.align);
         detail_cursor_y += kLineHeight;
     }
-    if (!model.detail_blocks.empty() && !model.detail_bars.empty()) {
-        detail_cursor_y += kSplitViewDetailBarSectionGap;
-    }
 
-    int detail_bar_label_width = 0;
-    for (const SplitViewDetailBar& bar : model.detail_bars) {
-        detail_bar_label_width =
-            std::max(detail_bar_label_width, MeasureTextWidth(bar.label.c_str()) + kSplitViewDetailBarLabelPadding);
+    if (!model.wifi_items.empty()) {
+        detail_cursor_y += kSplitViewDetailOptionGap;
     }
-    detail_bar_label_width = std::min(detail_bar_label_width, detail_text_width / 2);
-
-    for (const SplitViewDetailBar& bar : model.detail_bars) {
-        const int required_height = kLineHeight + kSplitViewDetailBarLabelGap + kSplitViewDetailBarHeight;
-        if (detail_cursor_y + required_height > detail_rect.y + detail_rect.h - kSplitViewDetailPadding) {
+    for (const WifiListItemModel& item : model.wifi_items) {
+        if (detail_cursor_y + kWifiListItemHeight > detail_rect.y + detail_rect.h - kSplitViewDetailPadding) {
             break;
         }
-
-        const int value_x = detail_rect.x + kSplitViewDetailPadding + detail_bar_label_width;
-        const int value_width = ClampNonNegative(detail_text_width - detail_bar_label_width);
-        const std::string fitted_label = FitText(bar.label, detail_bar_label_width - 4);
-        const std::string fitted_value = FitText(bar.value, value_width);
-        DrawText({detail_rect.x + kSplitViewDetailPadding,
-                  detail_cursor_y,
-                  detail_bar_label_width - 4,
-                  kLineHeight},
-                 fitted_label.c_str(),
-                 TextAlign::Left);
-        DrawText({value_x, detail_cursor_y, value_width, kLineHeight},
-                 fitted_value.c_str(),
-                 TextAlign::Right);
-        detail_cursor_y += kLineHeight + kSplitViewDetailBarLabelGap;
-
-        const Rect bar_rect = {
-            detail_rect.x + kSplitViewDetailPadding,
-            detail_cursor_y,
-            detail_text_width,
-            kSplitViewDetailBarHeight
-        };
-        DrawRect(bar_rect);
-
-        const int fill_area_width = ClampNonNegative(bar_rect.w - 2);
-        const int fill_width = (fill_area_width * ClampToRange(bar.percent, 0, 100)) / 100;
-        if (fill_width > 0) {
-            FillRect({bar_rect.x + 1, bar_rect.y + 1, fill_width, ClampNonNegative(bar_rect.h - 2)});
-        }
-        detail_cursor_y += kSplitViewDetailBarHeight + kSplitViewDetailBarGap;
+        RenderWifiListItem(item,
+                           {detail_rect.x + kSplitViewDetailPadding,
+                            detail_cursor_y,
+                            detail_text_width,
+                            kWifiListItemHeight});
+        detail_cursor_y += kWifiListItemHeight + kSplitViewDetailOptionGap;
     }
 
-    if ((!model.detail_blocks.empty() || !model.detail_bars.empty()) && !model.detail_sections.empty()) {
+    if ((!model.detail_blocks.empty() || !model.detail_options.empty() || !model.wifi_items.empty() ||
+         model.wifi_switch_visible) &&
+        !model.detail_sections.empty()) {
         detail_cursor_y += kSplitViewSectionGap;
     }
 
@@ -777,5 +978,149 @@ void Display::RenderSplitView(const SplitViewModel& model, int origin_y) {
         }
 
         detail_cursor_y += section_height + kSplitViewSectionGap;
+    }
+
+    if (!model.detail_qr_payload.empty()) {
+        const int caption_height = static_cast<int>(model.detail_qr_blocks.size()) * kLineHeight;
+        const int remaining_height =
+            detail_rect.y + detail_rect.h - kSplitViewDetailPadding - detail_cursor_y - caption_height;
+        const int qr_size = std::min(detail_text_width, std::max(0, remaining_height));
+        if (qr_size >= 80) {
+            detail_cursor_y += kSplitViewQrGap;
+            RenderQrCode(model.detail_qr_payload,
+                         {detail_rect.x + kSplitViewDetailPadding,
+                          detail_cursor_y,
+                          detail_text_width,
+                          qr_size - kSplitViewQrGap});
+            detail_cursor_y += qr_size;
+        }
+    }
+
+    for (const TextBlockModel& block : model.detail_qr_blocks) {
+        if (detail_cursor_y + kLineHeight > detail_rect.y + detail_rect.h - kSplitViewDetailPadding) {
+            break;
+        }
+
+        DrawText({detail_rect.x + kSplitViewDetailPadding, detail_cursor_y, detail_text_width, kLineHeight},
+                 block.text.c_str(),
+                 block.align);
+        detail_cursor_y += kLineHeight;
+    }
+
+    if ((!model.detail_blocks.empty() || !model.detail_options.empty() || !model.detail_qr_payload.empty() ||
+         !model.detail_qr_blocks.empty()) &&
+        !model.detail_bars.empty()) {
+        detail_cursor_y += kSplitViewDetailBarSectionGap;
+    }
+
+    int detail_bar_label_width = 0;
+    for (const SplitViewDetailBar& bar : model.detail_bars) {
+        detail_bar_label_width =
+            std::max(detail_bar_label_width, MeasureTextWidth(bar.label.c_str()) + kSplitViewDetailBarLabelPadding);
+    }
+    detail_bar_label_width = std::min(detail_bar_label_width, detail_text_width / 2);
+
+    for (const SplitViewDetailBar& bar : model.detail_bars) {
+        const int required_height = kLineHeight + kSplitViewDetailBarLabelGap + kSplitViewDetailBarHeight;
+        if (detail_cursor_y + required_height > detail_rect.y + detail_rect.h - kSplitViewDetailPadding) {
+            break;
+        }
+
+        const int value_x = detail_rect.x + kSplitViewDetailPadding + detail_bar_label_width;
+        const int value_width = ClampNonNegative(detail_text_width - detail_bar_label_width);
+        const std::string fitted_label = FitText(bar.label, detail_bar_label_width - 4);
+        const std::string fitted_value = FitText(bar.value, value_width);
+        DrawText({detail_rect.x + kSplitViewDetailPadding,
+                  detail_cursor_y,
+                  detail_bar_label_width - 4,
+                  kLineHeight},
+                 fitted_label.c_str(),
+                 TextAlign::Left);
+        DrawText({value_x, detail_cursor_y, value_width, kLineHeight},
+                 fitted_value.c_str(),
+                 TextAlign::Right);
+        detail_cursor_y += kLineHeight + kSplitViewDetailBarLabelGap;
+
+        const Rect bar_rect = {
+            detail_rect.x + kSplitViewDetailPadding,
+            detail_cursor_y,
+            detail_text_width,
+            kSplitViewDetailBarHeight
+        };
+        DrawRect(bar_rect);
+
+        const int fill_area_width = ClampNonNegative(bar_rect.w - 2);
+        const int fill_width = (fill_area_width * ClampToRange(bar.percent, 0, 100)) / 100;
+        if (fill_width > 0) {
+            FillRect({bar_rect.x + 1, bar_rect.y + 1, fill_width, ClampNonNegative(bar_rect.h - 2)});
+        }
+        detail_cursor_y += kSplitViewDetailBarHeight + kSplitViewDetailBarGap;
+    }
+
+}
+
+void Display::RenderModal(const ModalModel& model) {
+    if (!model.visible) {
+        return;
+    }
+
+    const int option_count = static_cast<int>(model.options.size());
+    const bool has_message = !model.message.empty();
+    const bool has_qr = !model.qr_payload.empty();
+    const int options_height =
+        option_count == 0 ? 0 : (option_count * kModalOptionHeight) + ((option_count - 1) * kModalOptionGap);
+    const int qr_height = has_qr ? kModalQrSize + kModalOptionGap : 0;
+    const int message_height = has_message ? kModalMessageHeight + kModalOptionGap : 0;
+    const int modal_width = std::min(kModalWidth, std::max(0, width_ - (kPagePadding * 2)));
+    const int modal_height =
+        (kModalPadding * 2) + kModalTitleHeight + kModalOptionGap + message_height + options_height + qr_height;
+    const Rect modal_rect = {
+        (width_ - modal_width) / 2,
+        std::max(kPagePadding, (height_ - modal_height) / 2),
+        modal_width,
+        std::min(modal_height, std::max(0, height_ - (kPagePadding * 2)))
+    };
+
+    FillRectWithColor(modal_rect, PixelColor::White);
+    DrawRect(modal_rect);
+    DrawRect({modal_rect.x + 2, modal_rect.y + 2, modal_rect.w - 4, modal_rect.h - 4});
+
+    int cursor_y = modal_rect.y + kModalPadding;
+    const int content_x = modal_rect.x + kModalPadding;
+    const int content_width = std::max(0, modal_rect.w - (kModalPadding * 2));
+    const std::string fitted_title = FitText(model.title, content_width);
+    DrawText({content_x, cursor_y, content_width, kModalTitleHeight}, fitted_title.c_str(), TextAlign::Center);
+    cursor_y += kModalTitleHeight + kModalOptionGap;
+
+    if (has_message) {
+        const std::string fitted_message = FitText(model.message, content_width);
+        DrawText({content_x, cursor_y, content_width, kModalMessageHeight}, fitted_message.c_str(), TextAlign::Center);
+        cursor_y += kModalMessageHeight + kModalOptionGap;
+    }
+
+    for (const SplitViewDetailOption& option : model.options) {
+        if (cursor_y + kModalOptionHeight > modal_rect.y + modal_rect.h - kModalPadding) {
+            break;
+        }
+
+        const Rect option_rect = {content_x, cursor_y, content_width, kModalOptionHeight};
+        const PixelColor foreground_color = option.focused ? PixelColor::White : PixelColor::Black;
+        if (option.focused) {
+            FillRoundedRect(option_rect, kSplitViewMenuRadius, PixelColor::Black);
+        } else {
+            DrawRect(option_rect);
+        }
+
+        const int text_x = option_rect.x + 8;
+        const std::string label = FitText(option.label, option_rect.x + option_rect.w - text_x - 8);
+        DrawText({text_x, option_rect.y + 6, option_rect.x + option_rect.w - text_x - 8, kLineHeight},
+                 label.c_str(),
+                 TextAlign::Left,
+                 foreground_color);
+        cursor_y += kModalOptionHeight + kModalOptionGap;
+    }
+
+    if (has_qr && cursor_y + kModalQrSize <= modal_rect.y + modal_rect.h - kModalPadding) {
+        RenderQrCode(model.qr_payload, {content_x, cursor_y, content_width, kModalQrSize});
     }
 }

@@ -29,7 +29,7 @@ WifiStation::~WifiStation() {
     Stop();
 }
 
-void WifiStation::Start() {
+void WifiStation::Start(bool start_scan) {
     std::lock_guard<std::mutex> lock(mutex_);
     if (running_) {
         return;
@@ -54,20 +54,29 @@ void WifiStation::Start() {
     ESP_ERROR_CHECK(esp_wifi_start());
 
     running_ = true;
+    auto_scan_on_start_ = start_scan;
     connected_ = false;
     connecting_ = false;
     current_ssid_.clear();
     connecting_ssid_.clear();
     ip_address_.clear();
-    StartScan();
+    ap_records_.clear();
+    if (start_scan) {
+        ESP_LOGI(kTag, "station started, begin scan");
+        StartScan();
+    } else {
+        ESP_LOGI(kTag, "station started, waiting for direct connect");
+    }
 }
 
 void WifiStation::Stop() {
     std::lock_guard<std::mutex> lock(mutex_);
     if (!running_) {
+        ESP_LOGI(kTag, "station stop ignored; not running");
         return;
     }
 
+    ESP_LOGI(kTag, "stopping station");
     if (scan_timer_ != nullptr) {
         esp_timer_stop(scan_timer_);
         esp_timer_delete(scan_timer_);
@@ -81,8 +90,14 @@ void WifiStation::Stop() {
         esp_event_handler_instance_unregister(WIFI_EVENT, ESP_EVENT_ANY_ID, wifi_event_handler_);
         wifi_event_handler_ = nullptr;
     }
-    esp_wifi_disconnect();
-    esp_wifi_stop();
+    esp_err_t err = esp_wifi_disconnect();
+    if (err != ESP_OK && err != ESP_ERR_WIFI_NOT_STARTED && err != ESP_ERR_WIFI_CONN) {
+        ESP_LOGW(kTag, "esp_wifi_disconnect failed while stopping station: %s", esp_err_to_name(err));
+    }
+    err = esp_wifi_stop();
+    if (err != ESP_OK && err != ESP_ERR_WIFI_NOT_STARTED) {
+        ESP_LOGW(kTag, "esp_wifi_stop failed while stopping station: %s", esp_err_to_name(err));
+    }
     if (station_netif_ != nullptr) {
         esp_netif_destroy_default_wifi(station_netif_);
         station_netif_ = nullptr;
@@ -95,6 +110,8 @@ void WifiStation::Stop() {
     current_ssid_.clear();
     connecting_ssid_.clear();
     ip_address_.clear();
+    ap_records_.clear();
+    ESP_LOGI(kTag, "station stopped");
 }
 
 bool WifiStation::IsConnected() const {
@@ -104,7 +121,7 @@ bool WifiStation::IsConnected() const {
 
 std::string WifiStation::GetSsid() const {
     std::lock_guard<std::mutex> lock(mutex_);
-    return current_ssid_;
+    return current_ssid_.empty() ? connecting_ssid_ : current_ssid_;
 }
 
 std::string WifiStation::GetIpAddress() const {
@@ -128,6 +145,16 @@ int WifiStation::GetChannel() const {
     }
     wifi_ap_record_t ap_info = {};
     return esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK ? static_cast<int>(ap_info.primary) : 0;
+}
+
+std::vector<wifi_ap_record_t> WifiStation::GetAccessPoints() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return ap_records_;
+}
+
+bool WifiStation::ConnectToWifi(const std::string& ssid, const std::string& password) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return ConnectToWifiLocked(ssid, password);
 }
 
 void WifiStation::SetScanIntervalSeconds(int scan_interval_seconds) {
@@ -157,12 +184,11 @@ void WifiStation::OnDisconnected(std::function<void()> on_disconnected) {
 
 void WifiStation::StartScan() {
     if (!running_ || scan_in_progress_ || connecting_) {
-        return;
-    }
-
-    const std::vector<SsidItem>& credentials = SsidManager::GetInstance().GetSsidList();
-    if (credentials.empty()) {
-        ScheduleScan();
+        ESP_LOGI(kTag,
+                 "skip station scan: running=%d scan_in_progress=%d connecting=%d",
+                 running_,
+                 scan_in_progress_,
+                 connecting_);
         return;
     }
 
@@ -170,7 +196,12 @@ void WifiStation::StartScan() {
     if (on_scan_begin_) {
         on_scan_begin_();
     }
-    esp_wifi_scan_start(nullptr, false);
+    esp_err_t err = esp_wifi_scan_start(nullptr, false);
+    if (err != ESP_OK) {
+        ESP_LOGW(kTag, "esp_wifi_scan_start failed: %s", esp_err_to_name(err));
+        scan_in_progress_ = false;
+        ScheduleScan();
+    }
 }
 
 void WifiStation::ScheduleScan() {
@@ -196,8 +227,15 @@ void WifiStation::HandleScanDone() {
             esp_wifi_scan_get_ap_records(&ap_count, access_points.data());
             access_points.resize(ap_count);
         }
+        ap_records_ = access_points;
 
         const std::vector<SsidItem>& credentials = SsidManager::GetInstance().GetSsidList();
+        if (credentials.empty()) {
+            ESP_LOGI(kTag, "station scan done: %u APs, no saved credentials", static_cast<unsigned>(access_points.size()));
+            ScheduleScan();
+            return;
+        }
+
         const SsidItem* selected = nullptr;
         int best_rssi = INT32_MIN;
         for (const wifi_ap_record_t& access_point : access_points) {
@@ -212,29 +250,69 @@ void WifiStation::HandleScanDone() {
         }
 
         if (selected == nullptr) {
+            ESP_LOGI(kTag,
+                     "station scan done: %u APs, no saved SSID matched",
+                     static_cast<unsigned>(access_points.size()));
             ScheduleScan();
             return;
         }
 
-        wifi_config_t wifi_config = {};
-        strlcpy(reinterpret_cast<char*>(wifi_config.sta.ssid), selected->ssid.c_str(), sizeof(wifi_config.sta.ssid));
-        strlcpy(reinterpret_cast<char*>(wifi_config.sta.password), selected->password.c_str(), sizeof(wifi_config.sta.password));
-        wifi_config.sta.scan_method = WIFI_ALL_CHANNEL_SCAN;
-        wifi_config.sta.threshold.authmode = WIFI_AUTH_OPEN;
-        ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config));
-
-        connecting_ = true;
-        connecting_ssid_ = selected->ssid;
-        target_ssid = connecting_ssid_;
+        ESP_LOGI(kTag, "station scan selected saved SSID '%s'", selected->ssid.c_str());
+        if (!ConnectToWifiLocked(selected->ssid, selected->password)) {
+            ScheduleScan();
+            return;
+        }
+        target_ssid = selected->ssid;
         on_connect_callback = on_connect_;
     }
 
     if (on_connect_callback) {
         on_connect_callback(target_ssid);
     }
-    if (esp_wifi_connect() != ESP_OK) {
-        HandleDisconnected();
+}
+
+bool WifiStation::ConnectToWifiLocked(const std::string& ssid, const std::string& password) {
+    if (!running_ || ssid.empty() || ssid.size() > 32 || password.size() > 64) {
+        ESP_LOGW(kTag,
+                 "reject connect request: running=%d ssid_empty=%d ssid_len=%u password_len=%u",
+                 running_,
+                 ssid.empty(),
+                 static_cast<unsigned>(ssid.size()),
+                 static_cast<unsigned>(password.size()));
+        return false;
     }
+
+    if (scan_timer_ != nullptr) {
+        esp_timer_stop(scan_timer_);
+    }
+    esp_err_t err = esp_wifi_scan_stop();
+    if (err != ESP_OK && err != ESP_ERR_WIFI_NOT_STARTED && err != ESP_ERR_WIFI_STATE) {
+        ESP_LOGW(kTag, "failed to stop scan before connect: %s", esp_err_to_name(err));
+    }
+
+    wifi_config_t wifi_config = {};
+    strlcpy(reinterpret_cast<char*>(wifi_config.sta.ssid), ssid.c_str(), sizeof(wifi_config.sta.ssid));
+    strlcpy(reinterpret_cast<char*>(wifi_config.sta.password), password.c_str(), sizeof(wifi_config.sta.password));
+    wifi_config.sta.scan_method = WIFI_ALL_CHANNEL_SCAN;
+    wifi_config.sta.threshold.authmode = WIFI_AUTH_OPEN;
+    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config));
+
+    connected_ = false;
+    connecting_ = true;
+    scan_in_progress_ = false;
+    current_ssid_.clear();
+    ip_address_.clear();
+    connecting_ssid_ = ssid;
+    ESP_LOGI(kTag, "connecting to SSID '%s'", ssid.c_str());
+    err = esp_wifi_connect();
+    if (err != ESP_OK) {
+        ESP_LOGW(kTag, "esp_wifi_connect failed for SSID '%s': %s", ssid.c_str(), esp_err_to_name(err));
+        connecting_ = false;
+        connecting_ssid_.clear();
+        ScheduleScan();
+        return false;
+    }
+    return true;
 }
 
 void WifiStation::HandleDisconnected() {
@@ -269,11 +347,17 @@ void WifiStation::WifiEventHandler(void* arg,
     (void)event_data;
     auto* self = static_cast<WifiStation*>(arg);
     if (event_id == WIFI_EVENT_STA_START) {
+        ESP_LOGI(kTag, "WIFI_EVENT_STA_START");
         std::lock_guard<std::mutex> lock(self->mutex_);
-        self->StartScan();
+        if (self->auto_scan_on_start_) {
+            self->StartScan();
+        }
     } else if (event_id == WIFI_EVENT_SCAN_DONE) {
+        ESP_LOGI(kTag, "WIFI_EVENT_SCAN_DONE");
         self->HandleScanDone();
     } else if (event_id == WIFI_EVENT_STA_DISCONNECTED) {
+        auto* event = static_cast<wifi_event_sta_disconnected_t*>(event_data);
+        ESP_LOGI(kTag, "WIFI_EVENT_STA_DISCONNECTED reason=%d", event->reason);
         self->HandleDisconnected();
     }
 }
@@ -304,6 +388,7 @@ void WifiStation::IpEventHandler(void* arg,
         }
     }
 
+    ESP_LOGI(kTag, "station got IP %s for SSID '%s'", self->ip_address_.c_str(), ssid.c_str());
     if (on_connected_callback) {
         on_connected_callback(ssid);
     }

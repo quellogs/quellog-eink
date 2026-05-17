@@ -4,6 +4,7 @@
 #include <functional>
 #include <cstdint>
 #include <string>
+#include <vector>
 
 class Display;
 
@@ -26,6 +27,12 @@ struct BoardStorageInfo {
     uint32_t app_used_kb = 0;
     uint32_t nvs_total_kb = 0;
     uint32_t nvs_used_kb = 0;
+};
+
+struct BoardWifiNetwork {
+    std::string ssid;
+    int rssi = 0;
+    bool secure = true;
 };
 
 enum class NetworkState {
@@ -86,6 +93,13 @@ public:
     virtual void StopNetwork() {}
     virtual bool IsWifiEnabled() const { return false; }
     virtual void EnterWifiConfigMode() {}
+    virtual bool ConnectToOpenWifi(const std::string& ssid) {
+        (void)ssid;
+        return false;
+    }
+    virtual void PrepareWifiConfigForSsid(const std::string& ssid) { (void)ssid; }
+    virtual std::vector<BoardWifiNetwork> GetScannedWifiNetworks() const { return {}; }
+    virtual std::string GetPendingWifiConfigSsid() const { return ""; }
     virtual bool IsWifiConnected() const { return false; }
     virtual bool IsWifiConfigMode() const { return false; }
     virtual NetworkState GetNetworkState() const { return NetworkState::Unknown; }

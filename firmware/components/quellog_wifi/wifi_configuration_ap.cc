@@ -1,6 +1,7 @@
 #include "wifi_configuration_ap.h"
 
 #include <esp_log.h>
+#include <esp_mac.h>
 #include <esp_wifi.h>
 #include <lwip/ip_addr.h>
 #include <nvs.h>
@@ -103,7 +104,13 @@ void WifiConfigurationAp::SetLanguage(const std::string& language) {
     language_ = language;
 }
 
+void WifiConfigurationAp::SetPendingSsid(const std::string& ssid) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    pending_ssid_ = ssid;
+}
+
 void WifiConfigurationAp::Start() {
+    ESP_LOGI(kTag, "starting config AP");
     ESP_ERROR_CHECK(esp_event_handler_instance_register(
         WIFI_EVENT, ESP_EVENT_ANY_ID, &WifiConfigurationAp::WifiEventHandler, this, &wifi_event_handler_));
     ESP_ERROR_CHECK(esp_event_handler_instance_register(
@@ -122,6 +129,7 @@ void WifiConfigurationAp::Start() {
 }
 
 void WifiConfigurationAp::Stop() {
+    ESP_LOGI(kTag, "stopping config AP");
     if (scan_timer_ != nullptr) {
         esp_timer_stop(scan_timer_);
         esp_timer_delete(scan_timer_);
@@ -147,7 +155,10 @@ void WifiConfigurationAp::Stop() {
         got_ip_handler_ = nullptr;
     }
 
-    esp_wifi_stop();
+    esp_err_t err = esp_wifi_stop();
+    if (err != ESP_OK && err != ESP_ERR_WIFI_NOT_INIT && err != ESP_ERR_WIFI_NOT_STARTED) {
+        ESP_LOGW(kTag, "esp_wifi_stop failed while stopping config AP: %s", esp_err_to_name(err));
+    }
     if (sta_netif_ != nullptr) {
         esp_netif_destroy_default_wifi(sta_netif_);
         sta_netif_ = nullptr;
@@ -156,6 +167,7 @@ void WifiConfigurationAp::Stop() {
         esp_netif_destroy_default_wifi(ap_netif_);
         ap_netif_ = nullptr;
     }
+    ESP_LOGI(kTag, "config AP stopped");
 }
 
 bool WifiConfigurationAp::ConnectToWifi(const std::string& ssid, const std::string& password) {
@@ -202,6 +214,10 @@ bool WifiConfigurationAp::ConnectToWifi(const std::string& ssid, const std::stri
 }
 
 void WifiConfigurationAp::Save(const std::string& ssid, const std::string& password) {
+    ESP_LOGI(kTag,
+             "saving credentials for SSID '%s', password_len=%u",
+             ssid.c_str(),
+             static_cast<unsigned>(password.size()));
     SsidManager::GetInstance().AddSsid(ssid, password);
 }
 
@@ -230,11 +246,22 @@ std::string WifiConfigurationAp::GetWebServerUrl() const {
     return kWebUrl;
 }
 
+std::string WifiConfigurationAp::GetPendingSsid() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return pending_ssid_;
+}
+
+void WifiConfigurationAp::OnCredentialsSubmitted(
+    std::function<void(const std::string& ssid, const std::string& password)> callback) {
+    on_credentials_submitted_ = std::move(callback);
+}
+
 void WifiConfigurationAp::OnExitRequested(std::function<void()> callback) {
     on_exit_requested_ = std::move(callback);
 }
 
 void WifiConfigurationAp::StartAccessPoint() {
+    ESP_LOGI(kTag, "creating APSTA netifs");
     ap_netif_ = esp_netif_create_default_wifi_ap();
     sta_netif_ = esp_netif_create_default_wifi_sta();
 
@@ -251,6 +278,7 @@ void WifiConfigurationAp::StartAccessPoint() {
 
     wifi_config_t wifi_config = {};
     const std::string ssid = GetSsid();
+    ESP_LOGI(kTag, "starting AP SSID '%s'", ssid.c_str());
     strlcpy(reinterpret_cast<char*>(wifi_config.ap.ssid), ssid.c_str(), sizeof(wifi_config.ap.ssid));
     wifi_config.ap.ssid_len = static_cast<uint8_t>(ssid.size());
     wifi_config.ap.max_connection = 4;
@@ -265,6 +293,7 @@ void WifiConfigurationAp::StartAccessPoint() {
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &wifi_config));
     ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_NONE));
     ESP_ERROR_CHECK(esp_wifi_start());
+    ESP_LOGI(kTag, "APSTA mode started");
 }
 
 void WifiConfigurationAp::StartWebServer() {
@@ -274,11 +303,13 @@ void WifiConfigurationAp::StartWebServer() {
     config.recv_wait_timeout = 10;
     config.send_wait_timeout = 10;
     ESP_ERROR_CHECK(httpd_start(&server_, &config));
+    ESP_LOGI(kTag, "config AP web server started");
 
     httpd_uri_t index_handler = {};
     index_handler.uri = "/";
     index_handler.method = HTTP_GET;
     index_handler.handler = [](httpd_req_t* req) -> esp_err_t {
+        ESP_LOGI(kTag, "GET /");
         httpd_resp_set_type(req, "text/html; charset=utf-8");
         httpd_resp_set_hdr(req, "Connection", "close");
         httpd_resp_send(req, index_html_start, HTTPD_RESP_USE_STRLEN);
@@ -290,6 +321,7 @@ void WifiConfigurationAp::StartWebServer() {
     done_handler.uri = "/done.html";
     done_handler.method = HTTP_GET;
     done_handler.handler = [](httpd_req_t* req) -> esp_err_t {
+        ESP_LOGI(kTag, "GET /done.html");
         httpd_resp_set_type(req, "text/html; charset=utf-8");
         httpd_resp_set_hdr(req, "Connection", "close");
         httpd_resp_send(req, done_html_start, HTTPD_RESP_USE_STRLEN);
@@ -304,6 +336,7 @@ void WifiConfigurationAp::StartWebServer() {
     scan_handler.handler = [](httpd_req_t* req) -> esp_err_t {
         auto* self = static_cast<WifiConfigurationAp*>(req->user_ctx);
         const std::vector<wifi_ap_record_t> aps = self->GetAccessPoints();
+        ESP_LOGI(kTag, "GET /scan -> %u APs", static_cast<unsigned>(aps.size()));
         std::string body = "{\"aps\":[";
         for (size_t i = 0; i < aps.size(); ++i) {
             if (i > 0) {
@@ -319,18 +352,34 @@ void WifiConfigurationAp::StartWebServer() {
     };
     ESP_ERROR_CHECK(httpd_register_uri_handler(server_, &scan_handler));
 
+    httpd_uri_t setup_context_handler = {};
+    setup_context_handler.uri = "/setup-context";
+    setup_context_handler.method = HTTP_GET;
+    setup_context_handler.user_ctx = this;
+    setup_context_handler.handler = [](httpd_req_t* req) -> esp_err_t {
+        auto* self = static_cast<WifiConfigurationAp*>(req->user_ctx);
+        const std::string ssid = self->GetPendingSsid();
+        ESP_LOGI(kTag, "GET /setup-context -> SSID '%s'", ssid.c_str());
+        SendJson(req, "{\"ssid\":\"" + EscapeJsonString(ssid) + "\"}");
+        return ESP_OK;
+    };
+    ESP_ERROR_CHECK(httpd_register_uri_handler(server_, &setup_context_handler));
+
     httpd_uri_t submit_handler = {};
     submit_handler.uri = "/submit";
     submit_handler.method = HTTP_POST;
     submit_handler.user_ctx = this;
     submit_handler.handler = [](httpd_req_t* req) -> esp_err_t {
+        ESP_LOGI(kTag, "POST /submit content_len=%d", req->content_len);
         std::string payload;
         if (!ReadRequestBody(req, &payload)) {
+            ESP_LOGW(kTag, "submit rejected: invalid payload");
             httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "invalid payload");
             return ESP_FAIL;
         }
         cJSON* root = cJSON_Parse(payload.c_str());
         if (root == nullptr) {
+            ESP_LOGW(kTag, "submit rejected: invalid JSON");
             SendJson(req, "{\"success\":false,\"error\":\"JSON 无效\"}");
             return ESP_OK;
         }
@@ -340,14 +389,24 @@ void WifiConfigurationAp::StartWebServer() {
         const char* ssid = cJSON_IsString(ssid_item) ? ssid_item->valuestring : "";
         const char* password = cJSON_IsString(password_item) ? password_item->valuestring : "";
         auto* self = static_cast<WifiConfigurationAp*>(req->user_ctx);
-        const bool success = self->ConnectToWifi(ssid != nullptr ? ssid : "", password != nullptr ? password : "");
-        if (success) {
-            self->Save(ssid != nullptr ? ssid : "", password != nullptr ? password : "");
-            SendJson(req, "{\"success\":true}");
-            self->ScheduleExit();
-        } else {
-            SendJson(req, "{\"success\":false,\"error\":\"连接失败，请检查密码\"}");
+        const std::string ssid_value = ssid != nullptr ? ssid : "";
+        const std::string password_value = password != nullptr ? password : "";
+        if (ssid_value.empty() || ssid_value.size() > 32 || password_value.size() > 64) {
+            ESP_LOGW(kTag,
+                     "submit rejected: ssid_len=%u password_len=%u",
+                     static_cast<unsigned>(ssid_value.size()),
+                     static_cast<unsigned>(password_value.size()));
+            cJSON_Delete(root);
+            SendJson(req, "{\"success\":false,\"error\":\"Wi-Fi 名称或密码格式无效\"}");
+            return ESP_OK;
         }
+        ESP_LOGI(kTag, "submit accepted for SSID '%s'", ssid_value.c_str());
+        self->Save(ssid_value, password_value);
+        if (self->on_credentials_submitted_) {
+            self->on_credentials_submitted_(ssid_value, password_value);
+        }
+        SendJson(req, "{\"success\":true}");
+        self->ScheduleExit();
         cJSON_Delete(root);
         return ESP_OK;
     };
@@ -360,6 +419,7 @@ void WifiConfigurationAp::StartWebServer() {
     credentials_handler.handler = [](httpd_req_t* req) -> esp_err_t {
         (void)req->user_ctx;
         const std::vector<SsidItem>& credentials = SsidManager::GetInstance().GetSsidList();
+        ESP_LOGI(kTag, "GET /credentials -> %u entries", static_cast<unsigned>(credentials.size()));
         std::string body = "{\"credentials\":[";
         for (size_t i = 0; i < credentials.size(); ++i) {
             if (i > 0) {
@@ -414,6 +474,7 @@ void WifiConfigurationAp::StartWebServer() {
     exit_handler.user_ctx = this;
     exit_handler.handler = [](httpd_req_t* req) -> esp_err_t {
         auto* self = static_cast<WifiConfigurationAp*>(req->user_ctx);
+        ESP_LOGI(kTag, "POST /exit");
         SendJson(req, "{\"success\":true}");
         self->ScheduleExit();
         return ESP_OK;
@@ -454,10 +515,12 @@ void WifiConfigurationAp::StartWebServer() {
 }
 
 void WifiConfigurationAp::ScheduleExit() {
+    ESP_LOGI(kTag, "schedule config AP exit");
     xTaskCreate(
         [](void* arg) {
             vTaskDelay(pdMS_TO_TICKS(1200));
             auto* self = static_cast<WifiConfigurationAp*>(arg);
+            ESP_LOGI(kTag, "config AP exit task running");
             if (self->on_exit_requested_) {
                 self->on_exit_requested_();
             }
@@ -489,7 +552,6 @@ void WifiConfigurationAp::WifiEventHandler(void* arg,
                                            int32_t event_id,
                                            void* event_data) {
     (void)event_base;
-    (void)event_data;
     auto* self = static_cast<WifiConfigurationAp*>(arg);
     if (event_id == WIFI_EVENT_SCAN_DONE) {
         uint16_t ap_count = 0;
@@ -509,6 +571,18 @@ void WifiConfigurationAp::WifiEventHandler(void* arg,
         if (!self->is_connecting_) {
             self->ScheduleScan();
         }
+    } else if (event_id == WIFI_EVENT_AP_STACONNECTED) {
+        auto* event = static_cast<wifi_event_ap_staconnected_t*>(event_data);
+        ESP_LOGI(kTag,
+                 "config AP client connected: " MACSTR ", aid=%d",
+                 MAC2STR(event->mac),
+                 event->aid);
+    } else if (event_id == WIFI_EVENT_AP_STADISCONNECTED) {
+        auto* event = static_cast<wifi_event_ap_stadisconnected_t*>(event_data);
+        ESP_LOGI(kTag,
+                 "config AP client disconnected: " MACSTR ", aid=%d",
+                 MAC2STR(event->mac),
+                 event->aid);
     } else if (event_id == WIFI_EVENT_STA_DISCONNECTED && self->is_connecting_) {
         xEventGroupSetBits(self->event_group_, kWifiFailedBit);
     }

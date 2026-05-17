@@ -18,7 +18,7 @@ constexpr int kBatteryIconHeight = 12;
 constexpr int kHotspotBadgeWidth = 24;
 constexpr int kHotspotBadgeHeight = 16;
 
-void DrawWifiIcon(Display* display, int x, int center_y) {
+void DrawWifiIcon(Display* display, int x, int center_y, bool connected) {
     if (display == nullptr) {
         return;
     }
@@ -30,6 +30,9 @@ void DrawWifiIcon(Display* display, int x, int center_y) {
     display->DrawLine(x + 6, center_y + 3, x + 8, center_y + 1);
     display->DrawLine(x + 8, center_y + 1, x + 10, center_y + 3);
     display->FillRect({x + 7, center_y + 4, 3, 3});
+    if (!connected) {
+        display->DrawLine(x + 1, center_y + 7, x + 15, center_y - 7);
+    }
 }
 
 void DrawChargingBolt(Display* display, int x, int y) {
@@ -99,7 +102,7 @@ void TopStatusBar::Render(Display* display, const TopStatusBarState& state) cons
 
     if (state.wifi_visible) {
         right_x -= kWifiIconWidth;
-        DrawWifiIcon(display, right_x, center_y);
+        DrawWifiIcon(display, right_x, center_y, state.wifi_connected);
         right_x -= kItemSpacing;
     }
 

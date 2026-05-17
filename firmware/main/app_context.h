@@ -37,6 +37,18 @@ struct StorageInfo {
     uint32_t nvs_used_kb = 0;
 };
 
+struct WifiNetworkInfo {
+    std::string ssid;
+    int rssi = 0;
+    bool secure = true;
+};
+
+enum class WifiSettingsMode {
+    Off = 0,
+    Station,
+    Ap,
+};
+
 struct AppContext {
     DeviceState device_state = kDeviceStateUnknown;
     int page_index = 0;
@@ -64,6 +76,12 @@ struct AppContext {
     std::string wifi_ap_url;
     int settings_selected_item = 0;
     int settings_item_count = 0;
+    int settings_wifi_focus_index = 0;
+    bool settings_wifi_ap_modal_visible = false;
+    bool settings_wifi_connecting_modal_visible = false;
+    WifiSettingsMode wifi_mode = WifiSettingsMode::Off;
+    std::string pending_wifi_config_ssid;
+    std::vector<WifiNetworkInfo> wifi_networks;
     StorageInfo storage;
     DashboardData dashboard;
 };

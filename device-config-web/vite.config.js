@@ -40,6 +40,12 @@ function quellogMockApi() {
           return;
         }
 
+        if (req.method === "GET" && url === "/setup-context") {
+          res.setHeader("Content-Type", "application/json");
+          res.end(JSON.stringify({ ssid: "Cafe Reading Room" }));
+          return;
+        }
+
         if (req.method === "POST" && url === "/submit") {
           let body = "";
           req.on("data", (chunk) => {
@@ -132,6 +138,10 @@ export default defineConfig({
             changeOrigin: true
           },
           "/credentials": {
+            target: deviceOrigin,
+            changeOrigin: true
+          },
+          "/setup-context": {
             target: deviceOrigin,
             changeOrigin: true
           },

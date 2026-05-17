@@ -26,36 +26,96 @@ std::string FormatStorageValue(uint32_t used_kb, uint32_t total_kb) {
     return FormatStorageSize(used_kb) + "/" + FormatStorageSize(total_kb) + "  " + std::to_string(percent) + "%";
 }
 
-void AppendWifiStatusBlocks(const AppContext& context, std::vector<TextBlockModel>* blocks) {
-    if (blocks == nullptr) {
+std::string EscapeWifiQrField(const std::string& value) {
+    std::string escaped;
+    escaped.reserve(value.size());
+    for (const char ch : value) {
+        if (ch == '\\' || ch == ';' || ch == ',' || ch == ':' || ch == '"') {
+            escaped.push_back('\\');
+        }
+        escaped.push_back(ch);
+    }
+    return escaped;
+}
+
+std::string BuildOpenWifiQrPayload(const std::string& ssid) {
+    return "WIFI:T:nopass;S:" + EscapeWifiQrField(ssid) + ";;";
+}
+
+void AppendWifiSettingsDetail(const AppContext& context, SplitViewModel* split_view) {
+    if (split_view == nullptr) {
         return;
     }
 
-    blocks->push_back({context.wifi_enabled ? "WiFi 开关  已开启" : "WiFi 开关  已关闭"});
+    split_view->wifi_switch_visible = true;
+    split_view->wifi_switch_on = context.wifi_enabled;
+    split_view->wifi_switch_focused = context.settings_wifi_focus_index == 0;
+
+    if (context.wifi_config_mode && !context.settings_wifi_ap_modal_visible) {
+        split_view->detail_blocks.push_back({"AP 配网中，手机扫码继续连接。"});
+        return;
+    }
+
     if (!context.wifi_enabled) {
-        return;
-    }
-
-    if (context.wifi_config_mode) {
-        blocks->push_back({"WiFi 状态  配网模式"});
-        blocks->push_back({"热点名称  " + context.wifi_ap_ssid});
-        blocks->push_back({"访问地址  " + context.wifi_ap_url});
+        split_view->detail_blocks.push_back({"开启后将扫描附近网络。"});
         return;
     }
 
     if (context.wifi_connected) {
-        blocks->push_back({"WiFi 状态  已连接"});
-        blocks->push_back({"当前网络  " + context.wifi_ssid});
-        blocks->push_back({"设备 IP  " + context.wifi_ip});
+        split_view->detail_blocks.push_back({"已连接  " + context.wifi_ssid});
+        if (!context.wifi_ip.empty()) {
+            split_view->detail_blocks.push_back({"IP  " + context.wifi_ip});
+        }
+    } else if (context.wifi_connecting) {
+        split_view->detail_blocks.push_back({"正在连接..."});
+    } else {
+        split_view->detail_blocks.push_back({"选择网络连接或配网。"});
+    }
+
+    for (size_t index = 0; index < context.wifi_networks.size(); ++index) {
+        const WifiNetworkInfo& network = context.wifi_networks[index];
+        split_view->wifi_items.push_back({
+            network.ssid,
+            network.rssi,
+            network.secure,
+            context.settings_wifi_focus_index == static_cast<int>(index) + 1,
+        });
+    }
+}
+
+void AppendWifiApModal(const AppContext& context, ModalModel* modal) {
+    if (modal == nullptr || !context.settings_wifi_ap_modal_visible) {
+        return;
+    }
+    modal->visible = true;
+    modal->title = "AP 配网";
+    modal->message = "手机扫码打开配网页";
+    if (!context.wifi_ap_ssid.empty()) {
+        modal->options.push_back({"热点  " + context.wifi_ap_ssid, true, false});
+        modal->options.push_back({
+            "地址  " + (context.wifi_ap_url.empty() ? std::string("192.168.4.1") : context.wifi_ap_url),
+            true,
+            false,
+        });
+        modal->qr_payload = BuildOpenWifiQrPayload(context.wifi_ap_ssid);
+    }
+}
+
+void AppendWifiConnectingModal(const AppContext& context, ModalModel* modal) {
+    if (modal == nullptr || !context.settings_wifi_connecting_modal_visible) {
         return;
     }
 
-    if (context.wifi_connecting) {
-        blocks->push_back({"WiFi 状态  连接中..."});
-        return;
+    modal->visible = true;
+    modal->title = "正在连接 Wi-Fi";
+    if (!context.pending_wifi_config_ssid.empty()) {
+        modal->message = "正在连接  " + context.pending_wifi_config_ssid;
+    } else if (!context.wifi_ssid.empty()) {
+        modal->message = "正在连接  " + context.wifi_ssid;
+    } else {
+        modal->message = "正在切换到家庭网络";
     }
-
-    blocks->push_back({"WiFi 状态  未连接"});
+    modal->options.push_back({"请稍候，连接成功后自动关闭", true, false});
 }
 
 void AppendBluetoothBlocks(const AppContext& context, std::vector<TextBlockModel>* blocks) {
@@ -114,7 +174,7 @@ void AppendDeviceInfoSections(const AppContext& context, SplitViewModel* split_v
     split_view->detail_sections.push_back({
         "设备",
         {
-            {"设备名称", context.device_alias},
+            {"名称", context.device_alias},
             {"型号", context.board_type},
             {"CPU", context.cpu_info},
         },
@@ -147,8 +207,9 @@ PageModel SettingsPage::BuildModel(const AppContext& context) const {
 
     switch (context.settings_selected_item) {
         case 0:
-            model.split_view.detail_blocks.push_back({"确认键可切换 WiFi 开关。"});
-            AppendWifiStatusBlocks(context, &model.split_view.detail_blocks);
+            AppendWifiSettingsDetail(context, &model.split_view);
+            AppendWifiApModal(context, &model.modal);
+            AppendWifiConnectingModal(context, &model.modal);
             break;
         case 1:
             AppendBluetoothBlocks(context, &model.split_view.detail_blocks);
@@ -163,7 +224,7 @@ PageModel SettingsPage::BuildModel(const AppContext& context) const {
             AppendDeviceInfoSections(context, &model.split_view);
             break;
         default:
-            AppendWifiStatusBlocks(context, &model.split_view.detail_blocks);
+            AppendWifiSettingsDetail(context, &model.split_view);
             break;
     }
 
