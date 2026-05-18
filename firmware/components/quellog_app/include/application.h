@@ -8,8 +8,10 @@
 
 #include "app_context.h"
 #include "boards/common/board.h"
+#include "dashboard_data_provider.h"
 #include "device_state.h"
 #include "display/ui_page_registry.h"
+#include "settings_web_server.h"
 
 class Application {
 public:
@@ -35,10 +37,17 @@ private:
     void PreviousPage();
     void NextSettingsItem();
     void PreviousSettingsItem();
+    void EnterSettingsDetail();
+    void ReturnSettingsMenuFocus();
     void NextWifiFocus();
     void PreviousWifiFocus();
     void ExecuteWifiFocus();
     void CloseWifiApModal();
+    void OpenStatsPeriodModal();
+    void CloseStatsPeriodModal();
+    void NextStatsPeriodFocus();
+    void PreviousStatsPeriodFocus();
+    void ApplyStatsPeriodFocus();
     void CloseRestartModal();
     void ToggleRestartModalFocus();
     void ExecuteRestartModalFocus();
@@ -57,6 +66,8 @@ private:
     bool HasBatteryChargingStateChanged(int64_t now_us);
     void HandleNetworkEvent(NetworkEvent event, const std::string& data);
     void UpdateDeviceState();
+    void ApplyDashboardLoadResult(const DashboardLoadResult& result);
+    void UpdateSettingsWebServer();
 
     Board& board_;
     Display* display_ = nullptr;
@@ -66,9 +77,15 @@ private:
     int current_page_index_ = 0;
     std::string device_alias_ = "Quellog E-Ink";
     DashboardData dashboard_;
+    SettingsWebServer settings_web_server_;
+    std::atomic<bool> refresh_requested_{false};
+    DashboardPeriod stats_period_ = DashboardPeriod::Month;
+    bool stats_period_modal_visible_ = false;
+    int stats_period_focus_index_ = 0;
     int64_t last_refresh_us_ = 0;
     int refresh_count_ = 0;
     int settings_selected_item_ = 0;
+    bool settings_detail_focused_ = false;
     int settings_wifi_focus_index_ = 0;
     bool settings_wifi_ap_modal_visible_ = false;
     bool settings_wifi_connecting_modal_visible_ = false;

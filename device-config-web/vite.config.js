@@ -22,6 +22,10 @@ function quellogMockApi() {
       dns2: "119.29.29.29"
     }
   ];
+  const deviceApiSettings = {
+    baseUrl: "http://192.168.1.10:3120",
+    apiTokenConfigured: true
+  };
 
   return {
     name: "quellog-mock-api",
@@ -137,6 +141,48 @@ function quellogMockApi() {
           return;
         }
 
+        if (req.method === "GET" && url === "/api/settings") {
+          res.setHeader("Content-Type", "application/json");
+          res.end(JSON.stringify({
+            base_url: deviceApiSettings.baseUrl,
+            api_token_configured: deviceApiSettings.apiTokenConfigured
+          }));
+          return;
+        }
+
+        if (req.method === "POST" && url === "/api/settings") {
+          let body = "";
+          req.on("data", (chunk) => {
+            body += chunk.toString();
+          });
+          req.on("end", () => {
+            try {
+              const payload = JSON.parse(body || "{}");
+              const baseUrl = String(payload.base_url || "").trim();
+              if (!baseUrl) {
+                res.setHeader("Content-Type", "application/json");
+                res.end(JSON.stringify({ success: false, error: "请填写服务地址" }));
+                return;
+              }
+              deviceApiSettings.baseUrl = baseUrl.replace(/\/+$/, "");
+              if (typeof payload.api_token === "string") {
+                deviceApiSettings.apiTokenConfigured = Boolean(payload.api_token.trim());
+              }
+              res.setHeader("Content-Type", "application/json");
+              res.end(JSON.stringify({
+                success: true,
+                base_url: deviceApiSettings.baseUrl,
+                api_token_configured: deviceApiSettings.apiTokenConfigured
+              }));
+            } catch {
+              res.statusCode = 400;
+              res.setHeader("Content-Type", "application/json");
+              res.end(JSON.stringify({ success: false, error: "JSON 无效" }));
+            }
+          });
+          return;
+        }
+
         next();
       });
     }
@@ -170,6 +216,10 @@ export default defineConfig({
             changeOrigin: true
           },
           "/exit": {
+            target: deviceOrigin,
+            changeOrigin: true
+          },
+          "/api/settings": {
             target: deviceOrigin,
             changeOrigin: true
           },

@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Quellog 设置</title>
+  </head>
+  <body>
+    <main class="eink-shell">
+      <section class="eink-panel">
+        <header class="eink-header">
+          <p class="eyebrow">QUELLOG</p>
+          <h1>设备接口设置</h1>
+        </header>
+
+        <label class="field">
+          <span>服务地址</span>
+          <input
+            id="base-url"
+            name="base-url"
+            autocomplete="url"
+            placeholder="http://192.168.1.10:3120"
+          />
+        </label>
+
+        <label class="field">
+          <span>API Token</span>
+          <input
+            id="api-token"
+            name="api-token"
+            type="password"
+            autocomplete="off"
+            placeholder="留空则不修改已保存 Token"
+          />
+        </label>
+
+        <p id="hint" class="secondary-copy">正在读取配置...</p>
+        <button id="save" class="primary-button" type="button">保存接口配置</button>
+        <p id="status" class="status" role="status" aria-live="polite"></p>
+      </section>
+    </main>
+    <script type="module" src="/src/settings.js"></script>
+  </body>
+</html>

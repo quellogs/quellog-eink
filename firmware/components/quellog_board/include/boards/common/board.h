@@ -18,6 +18,7 @@ enum class InputKey {
 
 struct InputEvent {
     InputKey key = InputKey::None;
+    bool long_press = false;
 };
 
 struct BoardStorageInfo {

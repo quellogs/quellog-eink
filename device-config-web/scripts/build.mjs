@@ -62,6 +62,7 @@ async function main() {
 
   await buildPage("index", "index.html");
   await buildPage("done", "done.html");
+  await buildPage("settings", "settings.html");
 
   const versionNote = [
     "Built by device-config-web/scripts/build.mjs",

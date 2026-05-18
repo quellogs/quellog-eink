@@ -77,3 +77,30 @@ export async function exitConfiguration() {
   });
   return parseJsonResponse(response);
 }
+
+export async function loadDeviceApiSettings() {
+  const response = await fetch("/api/settings", {
+    cache: "no-store",
+    headers: {
+      Accept: "application/json"
+    }
+  });
+  return parseJsonResponse(response);
+}
+
+export async function saveDeviceApiSettings(baseUrl, apiToken) {
+  const body = { base_url: baseUrl };
+  if (apiToken) {
+    body.api_token = apiToken;
+  }
+
+  const response = await fetch("/api/settings", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json"
+    },
+    body: JSON.stringify(body)
+  });
+  return parseJsonResponse(response);
+}

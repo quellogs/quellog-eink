@@ -19,9 +19,22 @@ struct CategorySummary {
     int64_t amount_cents = 0;
 };
 
+enum class DashboardPeriod {
+    Month = 0,
+    Quarter,
+    Year,
+};
+
+struct DashboardRange {
+    std::string from;
+    std::string to;
+};
+
 struct DashboardData {
+    DashboardPeriod period = DashboardPeriod::Month;
+    DashboardRange range;
     int64_t today_expense_cents = 0;
-    int64_t month_expense_cents = 0;
+    int64_t period_expense_cents = 0;
     int budget_used_percent = 0;
     std::string sync_status;
     std::vector<RecordSummary> recent_records;
@@ -76,6 +89,7 @@ struct AppContext {
     std::string wifi_ap_url;
     int settings_selected_item = 0;
     int settings_item_count = 0;
+    bool settings_detail_focused = false;
     int settings_wifi_focus_index = 0;
     bool settings_wifi_ap_modal_visible = false;
     bool settings_wifi_connecting_modal_visible = false;
@@ -86,6 +100,9 @@ struct AppContext {
     std::vector<WifiNetworkInfo> wifi_networks;
     StorageInfo storage;
     DashboardData dashboard;
+    DashboardPeriod stats_period = DashboardPeriod::Month;
+    bool stats_period_modal_visible = false;
+    int stats_period_focus_index = 0;
 };
 
 #endif  // QUELLOG_APP_CONTEXT_H_

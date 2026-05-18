@@ -5,10 +5,17 @@ idf_component_register(
         "application_controls.cc"
         "application_settings.cc"
         "dashboard_data_provider.cc"
+        "device_api_settings.cc"
+        "settings_web_server.cc"
     INCLUDE_DIRS
         "include"
+    EMBED_TXTFILES
+        "${QUELLOG_WEB_UI_SETTINGS}"
     REQUIRES
+        esp_http_client
+        esp_http_server
         esp_timer
+        json
         quellog_board
         quellog_display
         quellog_storage

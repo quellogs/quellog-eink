@@ -52,6 +52,8 @@ constexpr char kTag[] = "ZectrixBoard";
 
 constexpr uint8_t kFixedTemperatureCompensation = 244;
 constexpr int64_t kOpenSettingsLongPressUs = 1200000LL;
+constexpr int64_t kConfirmLongPressUs = kOpenSettingsLongPressUs;
+constexpr int64_t kUpLongPressUs = kOpenSettingsLongPressUs;
 constexpr int kChargeLedPwmResolutionBits = 10;
 constexpr int kChargeLedPwmMaxDuty = (1 << kChargeLedPwmResolutionBits) - 1;
 constexpr int kChargeLedPwmFrequencyHz = 5000;
@@ -786,10 +788,21 @@ public:
 
             const int level = gpio_get_level(button.gpio);
             if (level != button.level) {
+                const bool delayed_short_press =
+                    level == 1 &&
+                    button.level == 0 &&
+                    (button.key == InputKey::Confirm || button.key == InputKey::Up) &&
+                    button.stable_pressed_us != 0 &&
+                    !button.press_dispatched;
                 button.level = level;
                 button.last_change_us = now_us;
                 button.stable_pressed_us = 0;
                 button.press_dispatched = false;
+                if (delayed_short_press) {
+                    event.key = button.key;
+                    event.long_press = false;
+                    return true;
+                }
                 continue;
             }
 
@@ -821,12 +834,47 @@ public:
         settings_combo_dispatched_ = false;
 
         for (ButtonState& button : buttons_) {
-            if (button.stable_pressed_us == 0 || button.press_dispatched) {
+            if (button.key != InputKey::Up ||
+                button.stable_pressed_us == 0 ||
+                button.press_dispatched ||
+                now_us - button.stable_pressed_us < kUpLongPressUs) {
                 continue;
             }
 
             button.press_dispatched = true;
             event.key = button.key;
+            event.long_press = true;
+            return true;
+        }
+
+        for (ButtonState& button : buttons_) {
+            if (button.key != InputKey::Confirm ||
+                button.stable_pressed_us == 0 ||
+                button.press_dispatched ||
+                now_us - button.stable_pressed_us < kConfirmLongPressUs) {
+                continue;
+            }
+
+            button.press_dispatched = true;
+            event.key = button.key;
+            event.long_press = true;
+            return true;
+        }
+
+        for (ButtonState& button : buttons_) {
+            if (button.stable_pressed_us == 0 || button.press_dispatched) {
+                continue;
+            }
+            if (button.key == InputKey::Confirm) {
+                continue;
+            }
+            if (button.key == InputKey::Up) {
+                continue;
+            }
+
+            button.press_dispatched = true;
+            event.key = button.key;
+            event.long_press = false;
             return true;
         }
         return false;

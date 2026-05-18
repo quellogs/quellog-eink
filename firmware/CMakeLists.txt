@@ -8,6 +8,7 @@ set(QUELLOG_REPO_ROOT "${CMAKE_SOURCE_DIR}/..")
 set(QUELLOG_WEB_UI_DIR "${QUELLOG_REPO_ROOT}/device-config-web")
 set(QUELLOG_WEB_UI_INDEX "${QUELLOG_WEB_UI_DIR}/dist/index.html")
 set(QUELLOG_WEB_UI_DONE "${QUELLOG_WEB_UI_DIR}/dist/done.html")
+set(QUELLOG_WEB_UI_SETTINGS "${QUELLOG_WEB_UI_DIR}/dist/settings.html")
 
 file(GLOB_RECURSE QUELLOG_WEB_UI_SOURCES CONFIGURE_DEPENDS
     "${QUELLOG_WEB_UI_DIR}/src/*"
@@ -18,7 +19,7 @@ file(GLOB_RECURSE QUELLOG_WEB_UI_SOURCES CONFIGURE_DEPENDS
     "${QUELLOG_WEB_UI_DIR}/vite.config.js"
 )
 
-if(NOT EXISTS "${QUELLOG_WEB_UI_INDEX}" OR NOT EXISTS "${QUELLOG_WEB_UI_DONE}")
+if(NOT EXISTS "${QUELLOG_WEB_UI_INDEX}" OR NOT EXISTS "${QUELLOG_WEB_UI_DONE}" OR NOT EXISTS "${QUELLOG_WEB_UI_SETTINGS}")
     message(STATUS "Building Quellog device-config-web bootstrap artifacts")
     execute_process(
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/scripts/build_web_ui.py"

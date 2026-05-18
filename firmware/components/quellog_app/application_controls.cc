@@ -19,11 +19,26 @@ constexpr int kSettingsItemDeviceInfo = 4;
 constexpr int kSettingsItemRestart = 5;
 constexpr int kSettingsItemCount = 6;
 constexpr int kVolumeStepPercent = 10;
+constexpr int kStatsPeriodCount = 3;
 
 }  // namespace
 
 void Application::HandleInput(const InputEvent& event) {
     if (IsSettingsPage()) {
+        if (settings_selected_item_ == kSettingsItemWifi && settings_wifi_connecting_modal_visible_) {
+            return;
+        }
+
+        if (event.key == InputKey::Confirm && event.long_press && settings_detail_focused_) {
+            if (settings_wifi_ap_modal_visible_) {
+                settings_detail_focused_ = false;
+                CloseWifiApModal();
+                return;
+            }
+            ReturnSettingsMenuFocus();
+            return;
+        }
+
         if (settings_restart_modal_visible_) {
             switch (event.key) {
                 case InputKey::Up:
@@ -41,24 +56,20 @@ void Application::HandleInput(const InputEvent& event) {
             }
         }
 
-        if (settings_selected_item_ == kSettingsItemWifi) {
-            if (settings_wifi_connecting_modal_visible_) {
-                return;
+        if (settings_selected_item_ == kSettingsItemWifi && settings_wifi_ap_modal_visible_) {
+            switch (event.key) {
+                case InputKey::Confirm:
+                case InputKey::OpenSettings:
+                    CloseWifiApModal();
+                    return;
+                case InputKey::Up:
+                case InputKey::Down:
+                case InputKey::None:
+                    return;
             }
+        }
 
-            if (settings_wifi_ap_modal_visible_) {
-                switch (event.key) {
-                    case InputKey::Confirm:
-                    case InputKey::OpenSettings:
-                        CloseWifiApModal();
-                        return;
-                    case InputKey::Up:
-                    case InputKey::Down:
-                    case InputKey::None:
-                        return;
-                }
-            }
-
+        if (settings_selected_item_ == kSettingsItemWifi && settings_detail_focused_) {
             switch (event.key) {
                 case InputKey::Up:
                     PreviousWifiFocus();
@@ -77,12 +88,29 @@ void Application::HandleInput(const InputEvent& event) {
             }
         }
 
+        if (!settings_detail_focused_) {
+            switch (event.key) {
+                case InputKey::Up:
+                    PreviousSettingsItem();
+                    return;
+                case InputKey::Down:
+                    NextSettingsItem();
+                    return;
+                case InputKey::Confirm:
+                    EnterSettingsDetail();
+                    return;
+                case InputKey::OpenSettings:
+                    CloseSettingsPage();
+                    return;
+                case InputKey::None:
+                    return;
+            }
+        }
+
         switch (event.key) {
             case InputKey::Up:
-                PreviousSettingsItem();
                 return;
             case InputKey::Down:
-                NextSettingsItem();
                 return;
             case InputKey::Confirm:
                 ExecuteSettingsItem();
@@ -95,6 +123,30 @@ void Application::HandleInput(const InputEvent& event) {
         }
     }
 
+    if (current_page_index_ == kStatsPageIndex && stats_period_modal_visible_) {
+        switch (event.key) {
+            case InputKey::Up:
+                PreviousStatsPeriodFocus();
+                return;
+            case InputKey::Down:
+                NextStatsPeriodFocus();
+                return;
+            case InputKey::Confirm:
+                ApplyStatsPeriodFocus();
+                return;
+            case InputKey::OpenSettings:
+                CloseStatsPeriodModal();
+                return;
+            case InputKey::None:
+                return;
+        }
+    }
+
+    if (current_page_index_ == kStatsPageIndex && event.key == InputKey::Up && event.long_press) {
+        OpenStatsPeriodModal();
+        return;
+    }
+
     switch (event.key) {
         case InputKey::Up:
             PreviousPage();
@@ -103,7 +155,9 @@ void Application::HandleInput(const InputEvent& event) {
             NextPage();
             break;
         case InputKey::Confirm:
-            TriggerRefresh();
+            if (!event.long_press) {
+                TriggerRefresh();
+            }
             break;
         case InputKey::OpenSettings:
             OpenSettingsPage();
@@ -123,6 +177,7 @@ void Application::OpenSettingsPage() {
         settings_return_page_index_ = std::clamp(current_page_index_, 0, browseable_page_count - 1);
     }
     settings_selected_item_ = 0;
+    settings_detail_focused_ = false;
     settings_wifi_focus_index_ = 0;
     settings_wifi_ap_modal_visible_ = false;
     settings_wifi_connecting_modal_visible_ = false;
@@ -140,6 +195,7 @@ void Application::CloseSettingsPage() {
     settings_wifi_connecting_modal_visible_ = false;
     settings_restart_modal_visible_ = false;
     settings_restart_confirm_focused_ = false;
+    settings_detail_focused_ = false;
     settings_wifi_cached_networks_.clear();
     current_page_index_ = std::clamp(settings_return_page_index_, 0, browseable_page_count - 1);
     SaveSettings();
@@ -199,8 +255,10 @@ void Application::NextSettingsItem() {
     settings_wifi_connecting_modal_visible_ = false;
     settings_restart_modal_visible_ = false;
     settings_restart_confirm_focused_ = false;
+    settings_detail_focused_ = false;
     settings_wifi_cached_networks_.clear();
     settings_selected_item_ = (settings_selected_item_ + 1) % kSettingsItemCount;
+    settings_wifi_focus_index_ = 0;
     RenderCurrentPage(false);
 }
 
@@ -209,26 +267,41 @@ void Application::PreviousSettingsItem() {
     settings_wifi_connecting_modal_visible_ = false;
     settings_restart_modal_visible_ = false;
     settings_restart_confirm_focused_ = false;
+    settings_detail_focused_ = false;
     settings_wifi_cached_networks_.clear();
     settings_selected_item_ = (settings_selected_item_ + kSettingsItemCount - 1) % kSettingsItemCount;
+    settings_wifi_focus_index_ = 0;
+    RenderCurrentPage(false);
+}
+
+void Application::EnterSettingsDetail() {
+    settings_detail_focused_ = true;
+    settings_restart_modal_visible_ = false;
+    settings_restart_confirm_focused_ = false;
+    if (settings_selected_item_ == kSettingsItemWifi) {
+        settings_wifi_focus_index_ =
+            std::clamp(settings_wifi_focus_index_, 0, std::max(0, GetWifiFocusItemCount() - 1));
+    } else {
+        settings_wifi_focus_index_ = 0;
+    }
+    RenderCurrentPage(false);
+}
+
+void Application::ReturnSettingsMenuFocus() {
+    settings_detail_focused_ = false;
+    settings_wifi_focus_index_ = 0;
+    settings_restart_modal_visible_ = false;
+    settings_restart_confirm_focused_ = false;
     RenderCurrentPage(false);
 }
 
 void Application::NextWifiFocus() {
     const int item_count = GetWifiFocusItemCount();
     settings_wifi_focus_index_ = item_count > 0 ? (settings_wifi_focus_index_ + 1) % item_count : 0;
-    if (settings_wifi_focus_index_ == 0) {
-        NextSettingsItem();
-        return;
-    }
     RenderCurrentPage(false);
 }
 
 void Application::PreviousWifiFocus() {
-    if (settings_wifi_focus_index_ == 0) {
-        PreviousSettingsItem();
-        return;
-    }
     const int item_count = GetWifiFocusItemCount();
     settings_wifi_focus_index_ =
         item_count > 0 ? (settings_wifi_focus_index_ + item_count - 1) % item_count : 0;
@@ -240,6 +313,7 @@ void Application::CloseWifiApModal() {
     settings_wifi_connecting_modal_visible_ = false;
     settings_restart_modal_visible_ = false;
     settings_restart_confirm_focused_ = false;
+    settings_web_server_.Stop();
     board_.StopNetwork();
     board_.StartNetwork();
     settings_wifi_cached_networks_.clear();
@@ -248,12 +322,58 @@ void Application::CloseWifiApModal() {
 }
 
 void Application::TriggerRefresh() {
+    if (!board_.IsWifiConnected()) {
+        dashboard_.sync_status = "Wi-Fi 未连接";
+        last_refresh_us_ = esp_timer_get_time();
+        RenderCurrentPage(true);
+        UpdateDeviceState();
+        return;
+    }
+
     state_.store(kDeviceStateRefreshing, std::memory_order_release);
     ++refresh_count_;
-    dashboard_.sync_status = "本地快照 #" + std::to_string(refresh_count_);
+    ApplyDashboardLoadResult(LoadDashboardData(stats_period_));
     last_refresh_us_ = esp_timer_get_time();
     RenderCurrentPage(true);
     UpdateDeviceState();
+}
+
+void Application::OpenStatsPeriodModal() {
+    stats_period_modal_visible_ = true;
+    stats_period_focus_index_ = std::clamp(static_cast<int>(stats_period_), 0, kStatsPeriodCount - 1);
+    RenderCurrentPage(false);
+}
+
+void Application::CloseStatsPeriodModal() {
+    stats_period_modal_visible_ = false;
+    RenderCurrentPage(false);
+}
+
+void Application::NextStatsPeriodFocus() {
+    stats_period_focus_index_ = (stats_period_focus_index_ + 1) % kStatsPeriodCount;
+    RenderCurrentPage(false);
+}
+
+void Application::PreviousStatsPeriodFocus() {
+    stats_period_focus_index_ = (stats_period_focus_index_ + kStatsPeriodCount - 1) % kStatsPeriodCount;
+    RenderCurrentPage(false);
+}
+
+void Application::ApplyStatsPeriodFocus() {
+    stats_period_ = static_cast<DashboardPeriod>(std::clamp(stats_period_focus_index_, 0, kStatsPeriodCount - 1));
+    dashboard_.period = stats_period_;
+    stats_period_modal_visible_ = false;
+    SaveSettings();
+    TriggerRefresh();
+}
+
+void Application::ApplyDashboardLoadResult(const DashboardLoadResult& result) {
+    if (result.success) {
+        dashboard_ = result.data;
+        return;
+    }
+
+    dashboard_.sync_status = result.status_message.empty() ? "同步失败" : result.status_message;
 }
 
 void Application::ExecuteSettingsItem() {
@@ -325,6 +445,7 @@ void Application::RequestDeviceRestart() {
 void Application::ExecuteWifiFocus() {
     if (settings_wifi_focus_index_ <= 0) {
         if (board_.IsWifiEnabled()) {
+            settings_web_server_.Stop();
             board_.StopNetwork();
             settings_wifi_focus_index_ = 0;
             settings_wifi_ap_modal_visible_ = false;
@@ -358,6 +479,7 @@ void Application::ExecuteWifiFocus() {
     const BoardWifiNetwork& selected = networks[network_index];
     if (selected.secure) {
         settings_wifi_cached_networks_ = networks;
+        settings_web_server_.Stop();
         board_.PrepareWifiConfigForSsid(selected.ssid);
         settings_wifi_ap_modal_visible_ = true;
         settings_wifi_connecting_modal_visible_ = false;

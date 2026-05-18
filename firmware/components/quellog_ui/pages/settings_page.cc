@@ -64,7 +64,7 @@ void AppendWifiSettingsDetail(const AppContext& context, SplitViewModel* split_v
     split_view->wifi_switch_visible = true;
     split_view->wifi_switch_label = "无线网络";
     split_view->wifi_switch_on = context.wifi_enabled;
-    split_view->wifi_switch_focused = context.settings_wifi_focus_index == 0;
+    split_view->wifi_switch_focused = context.settings_detail_focused && context.settings_wifi_focus_index == 0;
 
     if (context.wifi_config_mode && !context.settings_wifi_ap_modal_visible) {
         split_view->detail_blocks.push_back({"AP 配网中，手机扫码继续连接。"});
@@ -80,6 +80,7 @@ void AppendWifiSettingsDetail(const AppContext& context, SplitViewModel* split_v
         split_view->detail_blocks.push_back({"已连接  " + context.wifi_ssid});
         if (!context.wifi_ip.empty()) {
             split_view->detail_blocks.push_back({"IP  " + context.wifi_ip});
+            split_view->detail_blocks.push_back({"设置  http://" + context.wifi_ip});
         }
     } else if (context.wifi_connecting) {
         split_view->detail_blocks.push_back({"正在连接..."});
@@ -93,7 +94,7 @@ void AppendWifiSettingsDetail(const AppContext& context, SplitViewModel* split_v
             network.ssid,
             network.rssi,
             network.secure,
-            context.settings_wifi_focus_index == static_cast<int>(index) + 1,
+            context.settings_detail_focused && context.settings_wifi_focus_index == static_cast<int>(index) + 1,
         });
     }
 }
@@ -147,7 +148,7 @@ void AppendBluetoothSettingsDetail(const AppContext& context, SplitViewModel* sp
     split_view->wifi_switch_visible = true;
     split_view->wifi_switch_label = "蓝牙";
     split_view->wifi_switch_on = context.bluetooth_enabled;
-    split_view->wifi_switch_focused = true;
+    split_view->wifi_switch_focused = context.settings_detail_focused;
 
     if (!context.bluetooth_enabled) {
         split_view->detail_blocks.push_back({"开启后设备将通过 BLE 广播。"});

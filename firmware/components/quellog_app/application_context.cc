@@ -6,10 +6,23 @@
 
 namespace {
 
+constexpr int kStatsPageIndex = 0;
 constexpr int kSettingsPageOffsetFromEnd = 1;
 constexpr int kSettingsItemWifi = 0;
 constexpr int kSettingsItemCount = 6;
 constexpr int kBatteryStatusCheckIntervalUs = 3 * 1000 * 1000;
+
+const char* DashboardPeriodLabel(DashboardPeriod period) {
+    switch (period) {
+        case DashboardPeriod::Quarter:
+            return "季度";
+        case DashboardPeriod::Year:
+            return "年度";
+        case DashboardPeriod::Month:
+        default:
+            return "月度";
+    }
+}
 
 }  // namespace
 
@@ -35,6 +48,7 @@ AppContext Application::BuildContext() const {
     context.wifi_ap_url = board_.GetWifiConfigApUrl();
     context.settings_selected_item = settings_selected_item_;
     context.settings_item_count = kSettingsItemCount;
+    context.settings_detail_focused = settings_detail_focused_;
     context.settings_wifi_focus_index = std::clamp(settings_wifi_focus_index_, 0, std::max(0, GetWifiFocusItemCount() - 1));
     context.settings_wifi_ap_modal_visible = settings_wifi_ap_modal_visible_;
     context.settings_wifi_connecting_modal_visible = settings_wifi_connecting_modal_visible_;
@@ -59,6 +73,9 @@ AppContext Application::BuildContext() const {
     context.storage.nvs_total_kb = storage.nvs_total_kb;
     context.storage.nvs_used_kb = storage.nvs_used_kb;
     context.dashboard = dashboard_;
+    context.stats_period = stats_period_;
+    context.stats_period_modal_visible = stats_period_modal_visible_;
+    context.stats_period_focus_index = stats_period_focus_index_;
 
     int battery_level = 0;
     bool battery_charging = false;
@@ -78,6 +95,10 @@ AppContext Application::BuildContext() const {
 TopStatusBarState Application::BuildTopStatusBarState(const AppContext& context) const {
     TopStatusBarState state;
     state.title = context.page_title;
+    if (context.page_index == kStatsPageIndex) {
+        state.title += " - ";
+        state.title += DashboardPeriodLabel(context.stats_period);
+    }
     state.wifi_visible = context.wifi_enabled;
     state.wifi_connected = context.wifi_connected;
     state.hotspot_visible = context.wifi_config_mode;
@@ -134,6 +155,7 @@ void Application::HandleNetworkEvent(NetworkEvent event, const std::string& data
         case NetworkEvent::Connected:
             settings_wifi_ap_modal_visible_ = false;
             settings_wifi_connecting_modal_visible_ = false;
+            refresh_requested_.store(true, std::memory_order_release);
             network_state_dirty_.store(true, std::memory_order_release);
             break;
         case NetworkEvent::Disconnected:
@@ -179,4 +201,12 @@ void Application::UpdateDeviceState() {
             break;
     }
     state_.store(next_state, std::memory_order_release);
+}
+
+void Application::UpdateSettingsWebServer() {
+    if (board_.IsWifiConnected() && !board_.IsWifiConfigMode()) {
+        settings_web_server_.Start();
+        return;
+    }
+    settings_web_server_.Stop();
 }

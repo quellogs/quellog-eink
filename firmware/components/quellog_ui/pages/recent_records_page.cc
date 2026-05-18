@@ -18,7 +18,7 @@ std::string FormatRecordLine(const RecordSummary& record) {
 PageModel RecentRecordsPage::BuildModel(const AppContext& context) const {
     PageModel model;
     if (context.dashboard.recent_records.empty()) {
-        model.text_blocks.push_back({"暂无本地记录。"});
+        model.text_blocks.push_back({"暂无记录。"});
     } else {
         for (const RecordSummary& record : context.dashboard.recent_records) {
             model.text_blocks.push_back({FormatRecordLine(record)});

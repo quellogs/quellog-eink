@@ -1,10 +1,23 @@
 #include "stats_page.h"
 
 #include <algorithm>
+#include <string>
 
 namespace {
 
 constexpr int kPreferredVisibleCategoryCount = 9;
+
+const char* GetPeriodLabel(DashboardPeriod period) {
+    switch (period) {
+        case DashboardPeriod::Quarter:
+            return "季度";
+        case DashboardPeriod::Year:
+            return "年度";
+        case DashboardPeriod::Month:
+        default:
+            return "月度";
+    }
+}
 
 std::vector<BarChartItem> BuildTopSpendingChartItems(const std::vector<CategorySummary>& categories,
                                                      int max_visible_items) {
@@ -50,7 +63,7 @@ PageModel StatsPage::BuildModel(const AppContext& context) const {
         const std::vector<BarChartItem> items =
             BuildTopSpendingChartItems(context.dashboard.categories, kPreferredVisibleCategoryCount);
         model.bar_charts.push_back({
-            "按分类支出",
+            std::string(GetPeriodLabel(context.stats_period)) + "分类支出",
             items,
             GetMaxAmountCents(items),
             kPreferredVisibleCategoryCount,
@@ -60,6 +73,27 @@ PageModel StatsPage::BuildModel(const AppContext& context) const {
             std::min(1, static_cast<int>(items.size()) - 1),
             false,
             true,
+        });
+    }
+
+    if (context.stats_period_modal_visible) {
+        model.modal.visible = true;
+        model.modal.title = "统计周期";
+        model.modal.message = "选择分类统计范围";
+        model.modal.options.push_back({
+            "月度",
+            context.stats_period == DashboardPeriod::Month,
+            context.stats_period_focus_index == static_cast<int>(DashboardPeriod::Month),
+        });
+        model.modal.options.push_back({
+            "季度",
+            context.stats_period == DashboardPeriod::Quarter,
+            context.stats_period_focus_index == static_cast<int>(DashboardPeriod::Quarter),
+        });
+        model.modal.options.push_back({
+            "年度",
+            context.stats_period == DashboardPeriod::Year,
+            context.stats_period_focus_index == static_cast<int>(DashboardPeriod::Year),
         });
     }
     return model;
