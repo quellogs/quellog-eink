@@ -35,6 +35,8 @@ private:
     void RenderCurrentPage(bool full_refresh);
     void NextPage();
     void PreviousPage();
+    void NextRecentRecordsPage();
+    void PreviousRecentRecordsPage();
     void NextSettingsItem();
     void PreviousSettingsItem();
     void EnterSettingsDetail();
@@ -57,6 +59,7 @@ private:
     int GetWifiFocusItemCount() const;
     WifiSettingsMode GetCurrentWifiSettingsMode() const;
     bool IsSettingsPage() const;
+    bool IsRecentRecordsPage() const;
     void LoadSettings();
     void SaveSettings();
     int NormalizeSavedPageIndex(int saved_page_index) const;
@@ -79,6 +82,7 @@ private:
     DashboardData dashboard_;
     SettingsWebServer settings_web_server_;
     std::atomic<bool> refresh_requested_{false};
+    int recent_records_page_index_ = 0;
     DashboardPeriod stats_period_ = DashboardPeriod::Month;
     bool stats_period_modal_visible_ = false;
     int stats_period_focus_index_ = 0;

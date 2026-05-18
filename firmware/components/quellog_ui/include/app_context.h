@@ -100,6 +100,8 @@ struct AppContext {
     std::vector<WifiNetworkInfo> wifi_networks;
     StorageInfo storage;
     DashboardData dashboard;
+    int recent_records_page_index = 0;
+    int recent_records_page_size = 6;
     DashboardPeriod stats_period = DashboardPeriod::Month;
     bool stats_period_modal_visible = false;
     int stats_period_focus_index = 0;

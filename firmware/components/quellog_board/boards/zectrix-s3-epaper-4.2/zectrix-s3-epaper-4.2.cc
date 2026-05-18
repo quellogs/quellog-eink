@@ -53,7 +53,7 @@ constexpr char kTag[] = "ZectrixBoard";
 constexpr uint8_t kFixedTemperatureCompensation = 244;
 constexpr int64_t kOpenSettingsLongPressUs = 1200000LL;
 constexpr int64_t kConfirmLongPressUs = kOpenSettingsLongPressUs;
-constexpr int64_t kUpLongPressUs = kOpenSettingsLongPressUs;
+constexpr int64_t kArrowLongPressUs = kOpenSettingsLongPressUs;
 constexpr int kChargeLedPwmResolutionBits = 10;
 constexpr int kChargeLedPwmMaxDuty = (1 << kChargeLedPwmResolutionBits) - 1;
 constexpr int kChargeLedPwmFrequencyHz = 5000;
@@ -788,19 +788,22 @@ public:
 
             const int level = gpio_get_level(button.gpio);
             if (level != button.level) {
-                const bool delayed_short_press =
-                    level == 1 &&
-                    button.level == 0 &&
-                    (button.key == InputKey::Confirm || button.key == InputKey::Up) &&
-                    button.stable_pressed_us != 0 &&
-                    !button.press_dispatched;
+                const bool released = level == 1 && button.level == 0;
+                const bool delayed_arrow_or_confirm =
+                    button.key == InputKey::Confirm || button.key == InputKey::Up || button.key == InputKey::Down;
+                const bool delayed_press =
+                    released && delayed_arrow_or_confirm && button.stable_pressed_us != 0 && !button.press_dispatched;
+                const bool delayed_long_press =
+                    delayed_press &&
+                    now_us - button.stable_pressed_us >=
+                        (button.key == InputKey::Confirm ? kConfirmLongPressUs : kArrowLongPressUs);
                 button.level = level;
                 button.last_change_us = now_us;
                 button.stable_pressed_us = 0;
                 button.press_dispatched = false;
-                if (delayed_short_press) {
+                if (delayed_press) {
                     event.key = button.key;
-                    event.long_press = false;
+                    event.long_press = delayed_long_press;
                     return true;
                 }
                 continue;
@@ -834,10 +837,10 @@ public:
         settings_combo_dispatched_ = false;
 
         for (ButtonState& button : buttons_) {
-            if (button.key != InputKey::Up ||
+            if ((button.key != InputKey::Up && button.key != InputKey::Down) ||
                 button.stable_pressed_us == 0 ||
                 button.press_dispatched ||
-                now_us - button.stable_pressed_us < kUpLongPressUs) {
+                now_us - button.stable_pressed_us < kArrowLongPressUs) {
                 continue;
             }
 
@@ -869,6 +872,9 @@ public:
                 continue;
             }
             if (button.key == InputKey::Up) {
+                continue;
+            }
+            if (button.key == InputKey::Down) {
                 continue;
             }
 

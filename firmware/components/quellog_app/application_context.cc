@@ -11,6 +11,7 @@ constexpr int kSettingsPageOffsetFromEnd = 1;
 constexpr int kSettingsItemWifi = 0;
 constexpr int kSettingsItemCount = 6;
 constexpr int kBatteryStatusCheckIntervalUs = 3 * 1000 * 1000;
+constexpr int kRecentRecordsPageSize = 6;
 
 const char* DashboardPeriodLabel(DashboardPeriod period) {
     switch (period) {
@@ -73,6 +74,8 @@ AppContext Application::BuildContext() const {
     context.storage.nvs_total_kb = storage.nvs_total_kb;
     context.storage.nvs_used_kb = storage.nvs_used_kb;
     context.dashboard = dashboard_;
+    context.recent_records_page_index = recent_records_page_index_;
+    context.recent_records_page_size = kRecentRecordsPageSize;
     context.stats_period = stats_period_;
     context.stats_period_modal_visible = stats_period_modal_visible_;
     context.stats_period_focus_index = stats_period_focus_index_;

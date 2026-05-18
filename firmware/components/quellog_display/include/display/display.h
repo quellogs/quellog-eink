@@ -119,6 +119,20 @@ struct SummaryMetricModel {
     std::string note;
 };
 
+struct RecentRecordRowModel {
+    std::string title;
+    std::string category;
+    std::string amount;
+};
+
+struct RecentRecordListModel {
+    std::vector<RecentRecordRowModel> rows;
+    bool visible = false;
+    int page_index = 0;
+    int page_count = 0;
+    int total_count = 0;
+};
+
 struct BarChartModel {
     std::string title;
     std::vector<BarChartItem> items;
@@ -136,6 +150,7 @@ struct PageModel {
     std::vector<SummaryMetricModel> summary_metrics;
     std::vector<TextBlockModel> text_blocks;
     std::vector<BarChartModel> bar_charts;
+    RecentRecordListModel recent_records;
     SplitViewModel split_view;
     ModalModel modal;
 };
@@ -186,6 +201,7 @@ protected:
     void DrawWifiSignalIcon(int x, int y, int rssi, PixelColor color);
     void RenderSummaryMetrics(const std::vector<SummaryMetricModel>& metrics, int* cursor_y);
     void RenderBarChart(const BarChartModel& model, const Rect& rect);
+    void RenderRecentRecords(const RecentRecordListModel& model, int origin_y);
     void RenderSplitView(const SplitViewModel& model, int origin_y);
     void RenderModal(const ModalModel& model);
 

@@ -60,6 +60,13 @@ constexpr int kSummaryNoteHeight = 12;
 constexpr int kSummaryCardHeight = 54;
 constexpr int kSummaryGap = 6;
 constexpr int kSummarySectionGap = 10;
+constexpr int kRecentHeaderHeight = 24;
+constexpr int kRecentRowHeight = 34;
+constexpr int kRecentFooterHeight = 16;
+constexpr int kRecentColumnGap = 8;
+constexpr int kRecentCategoryWidth = 104;
+constexpr int kRecentAmountWidth = 108;
+constexpr int kRecentPillHeight = 18;
 
 int ClampNonNegative(int value) {
     return value < 0 ? 0 : value;
@@ -272,6 +279,13 @@ void Display::RenderPage(const PageModel& model, const TopStatusBarState& top_st
 
     if (!model.summary_metrics.empty()) {
         RenderSummaryMetrics(model.summary_metrics, &cursor_y);
+    }
+
+    if (model.recent_records.visible) {
+        RenderRecentRecords(model.recent_records, cursor_y);
+        RenderModal(model.modal);
+        EndPage();
+        return;
     }
 
     if (!model.bar_charts.empty()) {
@@ -804,6 +818,68 @@ void Display::RenderBarChart(const BarChartModel& model, const Rect& rect) {
                  label.c_str(), TextAlign::Center);
         x += bar_width + kChartGap;
     }
+}
+
+void Display::RenderRecentRecords(const RecentRecordListModel& model, int origin_y) {
+    const int available_height = ClampNonNegative(height_ - origin_y - kPagePadding);
+    const int inner_width = ClampNonNegative(width_ - (kPagePadding * 2));
+    const Rect rect = {kPagePadding, origin_y, inner_width, available_height};
+    DrawRect(rect);
+
+    const int content_x = rect.x + kRecentColumnGap;
+    const int content_width = ClampNonNegative(rect.w - (kRecentColumnGap * 2));
+    const int amount_width = std::min(kRecentAmountWidth, std::max(72, content_width / 3));
+    const int category_width = std::min(kRecentCategoryWidth, std::max(72, content_width - amount_width - kRecentColumnGap));
+    const int amount_x = rect.x + rect.w - kRecentColumnGap - amount_width;
+    const int category_x = content_x;
+    const int title_width = content_width;
+
+    const std::string count_text = "共 " + std::to_string(model.total_count) + " 条";
+    const std::string page_text =
+        model.page_count > 0
+            ? std::to_string(model.page_index + 1) + "/" + std::to_string(model.page_count)
+            : "0/0";
+    DrawText({content_x, rect.y + 3, content_width / 2, kLineHeight}, count_text.c_str());
+    DrawText({content_x + (content_width / 2), rect.y + 3, content_width / 2, kLineHeight}, page_text.c_str(), TextAlign::Right);
+    DrawLine(rect.x, rect.y + kRecentHeaderHeight, rect.x + rect.w - 1, rect.y + kRecentHeaderHeight);
+
+    if (model.rows.empty()) {
+        DrawText({content_x, rect.y + kRecentHeaderHeight + 42, content_width, kLineHeight}, "暂无记录。", TextAlign::Center);
+        return;
+    }
+
+    int row_y = rect.y + kRecentHeaderHeight;
+    for (const RecentRecordRowModel& row : model.rows) {
+        if (row_y + kRecentRowHeight > rect.y + rect.h - kRecentFooterHeight) {
+            break;
+        }
+
+        const int title_y = row_y + 3;
+        const int meta_y = row_y + 17;
+        const std::string title = FitText(row.title.empty() ? "未命名" : row.title, title_width);
+        const std::string category = FitText(row.category.empty() ? "未分类" : row.category, category_width - 10);
+        const std::string amount = FitText(row.amount, amount_width);
+
+        DrawText({content_x, title_y, title_width, kLineHeight}, title.c_str());
+        const Rect category_rect = {
+            category_x,
+            meta_y,
+            category_width,
+            kRecentPillHeight
+        };
+        DrawRect(category_rect);
+        DrawText({category_rect.x + 5, category_rect.y + 1, category_rect.w - 10, kLineHeight}, category.c_str(), TextAlign::Center);
+        DrawText({amount_x, meta_y + 1, amount_width, kLineHeight}, amount.c_str(), TextAlign::Right);
+
+        row_y += kRecentRowHeight;
+        DrawLine(rect.x + 1, row_y, rect.x + rect.w - 2, row_y);
+    }
+
+    const std::string footer = "长按上/下翻页";
+    DrawText(
+        {content_x, rect.y + rect.h - kRecentFooterHeight + 1, content_width, kLineHeight},
+        footer.c_str(),
+        TextAlign::Center);
 }
 
 void Display::RenderSplitView(const SplitViewModel& model, int origin_y) {

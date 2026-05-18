@@ -20,6 +20,14 @@ constexpr int kSettingsItemRestart = 5;
 constexpr int kSettingsItemCount = 6;
 constexpr int kVolumeStepPercent = 10;
 constexpr int kStatsPeriodCount = 3;
+constexpr int kRecentRecordsPageSize = 6;
+
+int CalculateRecentRecordsPageCount(int total_count) {
+    if (total_count <= 0) {
+        return 0;
+    }
+    return (total_count + kRecentRecordsPageSize - 1) / kRecentRecordsPageSize;
+}
 
 }  // namespace
 
@@ -147,6 +155,21 @@ void Application::HandleInput(const InputEvent& event) {
         return;
     }
 
+    if (IsRecentRecordsPage() && event.long_press) {
+        switch (event.key) {
+            case InputKey::Up:
+                PreviousRecentRecordsPage();
+                return;
+            case InputKey::Down:
+                NextRecentRecordsPage();
+                return;
+            case InputKey::Confirm:
+            case InputKey::OpenSettings:
+            case InputKey::None:
+                break;
+        }
+    }
+
     switch (event.key) {
         case InputKey::Up:
             PreviousPage();
@@ -216,6 +239,11 @@ void Application::RenderCurrentPage(bool full_refresh) {
         display_->RequestPartialRefresh();
     }
 
+    const int recent_records_page_count =
+        CalculateRecentRecordsPageCount(static_cast<int>(dashboard_.recent_records.size()));
+    recent_records_page_index_ =
+        recent_records_page_count > 0 ? std::clamp(recent_records_page_index_, 0, recent_records_page_count - 1) : 0;
+
     const AppContext context = BuildContext();
     last_battery_status_check_us_ = esp_timer_get_time();
     battery_status_initialized_ = true;
@@ -247,6 +275,40 @@ void Application::PreviousPage() {
     }
     SaveSettings();
     UpdateDeviceState();
+    RenderCurrentPage(false);
+}
+
+void Application::NextRecentRecordsPage() {
+    const int page_count = CalculateRecentRecordsPageCount(static_cast<int>(dashboard_.recent_records.size()));
+    if (page_count <= 0) {
+        return;
+    }
+
+    if (page_count == 1) {
+        if (display_ != nullptr) {
+            display_->ShowNotification("只有一页记录");
+        }
+        return;
+    }
+
+    recent_records_page_index_ = (recent_records_page_index_ + 1) % page_count;
+    RenderCurrentPage(false);
+}
+
+void Application::PreviousRecentRecordsPage() {
+    const int page_count = CalculateRecentRecordsPageCount(static_cast<int>(dashboard_.recent_records.size()));
+    if (page_count <= 0) {
+        return;
+    }
+
+    if (page_count == 1) {
+        if (display_ != nullptr) {
+            display_->ShowNotification("只有一页记录");
+        }
+        return;
+    }
+
+    recent_records_page_index_ = (recent_records_page_index_ - 1 + page_count) % page_count;
     RenderCurrentPage(false);
 }
 
@@ -520,4 +582,9 @@ WifiSettingsMode Application::GetCurrentWifiSettingsMode() const {
 
 bool Application::IsSettingsPage() const {
     return current_page_index_ == pages_.Count() - kSettingsPageOffsetFromEnd;
+}
+
+bool Application::IsRecentRecordsPage() const {
+    const UiPage* page = pages_.Get(current_page_index_);
+    return page != nullptr && std::string(page->GetId()) == "recent_records";
 }
