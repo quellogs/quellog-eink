@@ -153,8 +153,16 @@ std::vector<wifi_ap_record_t> WifiStation::GetAccessPoints() const {
 }
 
 bool WifiStation::ConnectToWifi(const std::string& ssid, const std::string& password) {
+    SsidItem item = {};
+    item.ssid = ssid;
+    item.password = password;
+    item.ip_mode = WifiIpMode::Dhcp;
+    return ConnectToWifi(item);
+}
+
+bool WifiStation::ConnectToWifi(const SsidItem& item) {
     std::lock_guard<std::mutex> lock(mutex_);
-    return ConnectToWifiLocked(ssid, password);
+    return ConnectToWifiLocked(item);
 }
 
 void WifiStation::SetScanIntervalSeconds(int scan_interval_seconds) {
@@ -258,7 +266,7 @@ void WifiStation::HandleScanDone() {
         }
 
         ESP_LOGI(kTag, "station scan selected saved SSID '%s'", selected->ssid.c_str());
-        if (!ConnectToWifiLocked(selected->ssid, selected->password)) {
+        if (!ConnectToWifiLocked(*selected)) {
             ScheduleScan();
             return;
         }
@@ -272,6 +280,16 @@ void WifiStation::HandleScanDone() {
 }
 
 bool WifiStation::ConnectToWifiLocked(const std::string& ssid, const std::string& password) {
+    SsidItem item = {};
+    item.ssid = ssid;
+    item.password = password;
+    item.ip_mode = WifiIpMode::Dhcp;
+    return ConnectToWifiLocked(item);
+}
+
+bool WifiStation::ConnectToWifiLocked(const SsidItem& item) {
+    const std::string& ssid = item.ssid;
+    const std::string& password = item.password;
     if (!running_ || ssid.empty() || ssid.size() > 32 || password.size() > 64) {
         ESP_LOGW(kTag,
                  "reject connect request: running=%d ssid_empty=%d ssid_len=%u password_len=%u",
@@ -312,6 +330,86 @@ bool WifiStation::ConnectToWifiLocked(const std::string& ssid, const std::string
         ScheduleScan();
         return false;
     }
+    if (!ConfigureIpLocked(item)) {
+        ScheduleScan();
+        return false;
+    }
+    return true;
+}
+
+bool WifiStation::ConfigureIpLocked(const SsidItem& item) {
+    if (station_netif_ == nullptr) {
+        return false;
+    }
+
+    if (item.ip_mode == WifiIpMode::Dhcp) {
+        esp_netif_dns_info_t empty_dns_info = {};
+        empty_dns_info.ip.type = ESP_IPADDR_TYPE_V4;
+        esp_netif_set_dns_info(station_netif_, ESP_NETIF_DNS_BACKUP, &empty_dns_info);
+        esp_err_t err = esp_netif_dhcpc_start(station_netif_);
+        if (err != ESP_OK && err != ESP_ERR_ESP_NETIF_DHCP_ALREADY_STARTED) {
+            ESP_LOGW(kTag, "failed to start DHCP client: %s", esp_err_to_name(err));
+            return false;
+        }
+        ESP_LOGI(kTag, "station IP mode: DHCP");
+        return true;
+    }
+
+    esp_netif_ip_info_t ip_info = {};
+    if (esp_netif_str_to_ip4(item.ip.c_str(), &ip_info.ip) != ESP_OK ||
+        esp_netif_str_to_ip4(item.netmask.c_str(), &ip_info.netmask) != ESP_OK ||
+        esp_netif_str_to_ip4(item.gateway.c_str(), &ip_info.gw) != ESP_OK) {
+        ESP_LOGW(kTag, "invalid static IP settings for SSID '%s'", item.ssid.c_str());
+        return false;
+    }
+
+    esp_err_t err = esp_netif_dhcpc_stop(station_netif_);
+    if (err != ESP_OK && err != ESP_ERR_ESP_NETIF_DHCP_ALREADY_STOPPED) {
+        ESP_LOGW(kTag, "failed to stop DHCP client: %s", esp_err_to_name(err));
+        return false;
+    }
+    err = esp_netif_set_ip_info(station_netif_, &ip_info);
+    if (err != ESP_OK) {
+        ESP_LOGW(kTag, "failed to set static IP info: %s", esp_err_to_name(err));
+        return false;
+    }
+
+    esp_netif_dns_info_t dns_info = {};
+    if (esp_netif_str_to_ip4(item.dns1.c_str(), &dns_info.ip.u_addr.ip4) != ESP_OK) {
+        ESP_LOGW(kTag, "invalid primary DNS for SSID '%s'", item.ssid.c_str());
+        return false;
+    }
+    dns_info.ip.type = ESP_IPADDR_TYPE_V4;
+    err = esp_netif_set_dns_info(station_netif_, ESP_NETIF_DNS_MAIN, &dns_info);
+    if (err != ESP_OK) {
+        ESP_LOGW(kTag, "failed to set primary DNS: %s", esp_err_to_name(err));
+        return false;
+    }
+
+    if (!item.dns2.empty()) {
+        esp_netif_dns_info_t backup_dns_info = {};
+        if (esp_netif_str_to_ip4(item.dns2.c_str(), &backup_dns_info.ip.u_addr.ip4) != ESP_OK) {
+            ESP_LOGW(kTag, "invalid secondary DNS for SSID '%s'", item.ssid.c_str());
+            return false;
+        }
+        backup_dns_info.ip.type = ESP_IPADDR_TYPE_V4;
+        err = esp_netif_set_dns_info(station_netif_, ESP_NETIF_DNS_BACKUP, &backup_dns_info);
+        if (err != ESP_OK) {
+            ESP_LOGW(kTag, "failed to set secondary DNS: %s", esp_err_to_name(err));
+            return false;
+        }
+    } else {
+        esp_netif_dns_info_t empty_dns_info = {};
+        empty_dns_info.ip.type = ESP_IPADDR_TYPE_V4;
+        esp_netif_set_dns_info(station_netif_, ESP_NETIF_DNS_BACKUP, &empty_dns_info);
+    }
+
+    ESP_LOGI(kTag,
+             "station IP mode: static ip=%s gateway=%s dns1=%s dns2=%s",
+             item.ip.c_str(),
+             item.gateway.c_str(),
+             item.dns1.c_str(),
+             item.dns2.c_str());
     return true;
 }
 

@@ -78,6 +78,48 @@ bool ReadRequestBody(httpd_req_t* req, std::string* body) {
     return true;
 }
 
+std::string GetJsonString(cJSON* root, const char* name) {
+    cJSON* item = cJSON_GetObjectItemCaseSensitive(root, name);
+    const char* value = cJSON_IsString(item) ? item->valuestring : "";
+    return value != nullptr ? std::string(value) : std::string();
+}
+
+bool IsValidIpv4(const std::string& value) {
+    esp_ip4_addr_t address = {};
+    return !value.empty() && esp_netif_str_to_ip4(value.c_str(), &address) == ESP_OK;
+}
+
+bool BuildSubmittedWifiConfig(cJSON* root, SsidItem* item, std::string* error) {
+    if (item == nullptr || error == nullptr) {
+        return false;
+    }
+
+    item->ssid = GetJsonString(root, "ssid");
+    item->password = GetJsonString(root, "password");
+    if (item->ssid.empty() || item->ssid.size() > 32 || item->password.size() > 64) {
+        *error = "Wi-Fi 名称或密码格式无效";
+        return false;
+    }
+
+    const std::string ip_mode = GetJsonString(root, "ipMode");
+    item->ip_mode = ip_mode == "static" ? WifiIpMode::Static : WifiIpMode::Dhcp;
+    if (item->ip_mode == WifiIpMode::Dhcp) {
+        return true;
+    }
+
+    item->ip = GetJsonString(root, "ip");
+    item->netmask = GetJsonString(root, "netmask");
+    item->gateway = GetJsonString(root, "gateway");
+    item->dns1 = GetJsonString(root, "dns1");
+    item->dns2 = GetJsonString(root, "dns2");
+    if (!IsValidIpv4(item->ip) || !IsValidIpv4(item->netmask) || !IsValidIpv4(item->gateway) ||
+        !IsValidIpv4(item->dns1) || (!item->dns2.empty() && !IsValidIpv4(item->dns2))) {
+        *error = "手动 IP、网关或 DNS 格式无效";
+        return false;
+    }
+    return true;
+}
+
 }  // namespace
 
 WifiConfigurationAp::WifiConfigurationAp() {
@@ -171,7 +213,15 @@ void WifiConfigurationAp::Stop() {
 }
 
 bool WifiConfigurationAp::ConnectToWifi(const std::string& ssid, const std::string& password) {
-    if (ssid.empty() || ssid.size() > 32 || password.size() > 64) {
+    SsidItem item = {};
+    item.ssid = ssid;
+    item.password = password;
+    item.ip_mode = WifiIpMode::Dhcp;
+    return ConnectToWifi(item);
+}
+
+bool WifiConfigurationAp::ConnectToWifi(const SsidItem& item) {
+    if (item.ssid.empty() || item.ssid.size() > 32 || item.password.size() > 64) {
         return false;
     }
 
@@ -183,10 +233,55 @@ bool WifiConfigurationAp::ConnectToWifi(const std::string& ssid, const std::stri
     xEventGroupClearBits(event_group_, kWifiConnectedBit | kWifiFailedBit);
 
     wifi_config_t wifi_config = {};
-    strlcpy(reinterpret_cast<char*>(wifi_config.sta.ssid), ssid.c_str(), sizeof(wifi_config.sta.ssid));
-    strlcpy(reinterpret_cast<char*>(wifi_config.sta.password), password.c_str(), sizeof(wifi_config.sta.password));
+    strlcpy(reinterpret_cast<char*>(wifi_config.sta.ssid), item.ssid.c_str(), sizeof(wifi_config.sta.ssid));
+    strlcpy(reinterpret_cast<char*>(wifi_config.sta.password), item.password.c_str(), sizeof(wifi_config.sta.password));
     wifi_config.sta.scan_method = WIFI_ALL_CHANNEL_SCAN;
     wifi_config.sta.threshold.authmode = WIFI_AUTH_OPEN;
+    if (item.ip_mode == WifiIpMode::Static) {
+        esp_netif_ip_info_t ip_info = {};
+        esp_netif_dns_info_t dns_info = {};
+        if (esp_netif_str_to_ip4(item.ip.c_str(), &ip_info.ip) != ESP_OK ||
+            esp_netif_str_to_ip4(item.netmask.c_str(), &ip_info.netmask) != ESP_OK ||
+            esp_netif_str_to_ip4(item.gateway.c_str(), &ip_info.gw) != ESP_OK ||
+            esp_netif_str_to_ip4(item.dns1.c_str(), &dns_info.ip.u_addr.ip4) != ESP_OK) {
+            is_connecting_ = false;
+            ScheduleScan();
+            return false;
+        }
+        esp_err_t err = esp_netif_dhcpc_stop(sta_netif_);
+        if (err != ESP_OK && err != ESP_ERR_ESP_NETIF_DHCP_ALREADY_STOPPED) {
+            is_connecting_ = false;
+            ScheduleScan();
+            return false;
+        }
+        ESP_ERROR_CHECK(esp_netif_set_ip_info(sta_netif_, &ip_info));
+        dns_info.ip.type = ESP_IPADDR_TYPE_V4;
+        ESP_ERROR_CHECK(esp_netif_set_dns_info(sta_netif_, ESP_NETIF_DNS_MAIN, &dns_info));
+        if (!item.dns2.empty()) {
+            esp_netif_dns_info_t backup_dns_info = {};
+            if (esp_netif_str_to_ip4(item.dns2.c_str(), &backup_dns_info.ip.u_addr.ip4) != ESP_OK) {
+                is_connecting_ = false;
+                ScheduleScan();
+                return false;
+            }
+            backup_dns_info.ip.type = ESP_IPADDR_TYPE_V4;
+            ESP_ERROR_CHECK(esp_netif_set_dns_info(sta_netif_, ESP_NETIF_DNS_BACKUP, &backup_dns_info));
+        } else {
+            esp_netif_dns_info_t empty_dns_info = {};
+            empty_dns_info.ip.type = ESP_IPADDR_TYPE_V4;
+            esp_netif_set_dns_info(sta_netif_, ESP_NETIF_DNS_BACKUP, &empty_dns_info);
+        }
+    } else {
+        esp_netif_dns_info_t empty_dns_info = {};
+        empty_dns_info.ip.type = ESP_IPADDR_TYPE_V4;
+        esp_netif_set_dns_info(sta_netif_, ESP_NETIF_DNS_BACKUP, &empty_dns_info);
+        const esp_err_t err = esp_netif_dhcpc_start(sta_netif_);
+        if (err != ESP_OK && err != ESP_ERR_ESP_NETIF_DHCP_ALREADY_STARTED) {
+            is_connecting_ = false;
+            ScheduleScan();
+            return false;
+        }
+    }
 
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config));
     if (esp_wifi_connect() != ESP_OK) {
@@ -213,12 +308,13 @@ bool WifiConfigurationAp::ConnectToWifi(const std::string& ssid, const std::stri
     return false;
 }
 
-void WifiConfigurationAp::Save(const std::string& ssid, const std::string& password) {
+void WifiConfigurationAp::Save(const SsidItem& item) {
     ESP_LOGI(kTag,
-             "saving credentials for SSID '%s', password_len=%u",
-             ssid.c_str(),
-             static_cast<unsigned>(password.size()));
-    SsidManager::GetInstance().AddSsid(ssid, password);
+             "saving credentials for SSID '%s', password_len=%u ip_mode=%s",
+             item.ssid.c_str(),
+             static_cast<unsigned>(item.password.size()),
+             item.ip_mode == WifiIpMode::Static ? "static" : "dhcp");
+    SsidManager::GetInstance().AddSsid(item);
 }
 
 void WifiConfigurationAp::RemoveCredential(const std::string& ssid) {
@@ -251,8 +347,7 @@ std::string WifiConfigurationAp::GetPendingSsid() const {
     return pending_ssid_;
 }
 
-void WifiConfigurationAp::OnCredentialsSubmitted(
-    std::function<void(const std::string& ssid, const std::string& password)> callback) {
+void WifiConfigurationAp::OnCredentialsSubmitted(std::function<void(const SsidItem& item)> callback) {
     on_credentials_submitted_ = std::move(callback);
 }
 
@@ -384,26 +479,26 @@ void WifiConfigurationAp::StartWebServer() {
             return ESP_OK;
         }
 
-        cJSON* ssid_item = cJSON_GetObjectItemCaseSensitive(root, "ssid");
-        cJSON* password_item = cJSON_GetObjectItemCaseSensitive(root, "password");
-        const char* ssid = cJSON_IsString(ssid_item) ? ssid_item->valuestring : "";
-        const char* password = cJSON_IsString(password_item) ? password_item->valuestring : "";
         auto* self = static_cast<WifiConfigurationAp*>(req->user_ctx);
-        const std::string ssid_value = ssid != nullptr ? ssid : "";
-        const std::string password_value = password != nullptr ? password : "";
-        if (ssid_value.empty() || ssid_value.size() > 32 || password_value.size() > 64) {
+        SsidItem submitted = {};
+        std::string error;
+        if (!BuildSubmittedWifiConfig(root, &submitted, &error)) {
             ESP_LOGW(kTag,
-                     "submit rejected: ssid_len=%u password_len=%u",
-                     static_cast<unsigned>(ssid_value.size()),
-                     static_cast<unsigned>(password_value.size()));
+                     "submit rejected: ssid_len=%u password_len=%u ip_mode=%s",
+                     static_cast<unsigned>(submitted.ssid.size()),
+                     static_cast<unsigned>(submitted.password.size()),
+                     submitted.ip_mode == WifiIpMode::Static ? "static" : "dhcp");
             cJSON_Delete(root);
-            SendJson(req, "{\"success\":false,\"error\":\"Wi-Fi 名称或密码格式无效\"}");
+            SendJson(req, "{\"success\":false,\"error\":\"" + EscapeJsonString(error) + "\"}");
             return ESP_OK;
         }
-        ESP_LOGI(kTag, "submit accepted for SSID '%s'", ssid_value.c_str());
-        self->Save(ssid_value, password_value);
+        ESP_LOGI(kTag,
+                 "submit accepted for SSID '%s' ip_mode=%s",
+                 submitted.ssid.c_str(),
+                 submitted.ip_mode == WifiIpMode::Static ? "static" : "dhcp");
+        self->Save(submitted);
         if (self->on_credentials_submitted_) {
-            self->on_credentials_submitted_(ssid_value, password_value);
+            self->on_credentials_submitted_(submitted);
         }
         SendJson(req, "{\"success\":true}");
         self->ScheduleExit();
@@ -426,7 +521,8 @@ void WifiConfigurationAp::StartWebServer() {
                 body += ',';
             }
             body += "{\"ssid\":\"" + EscapeJsonString(credentials[i].ssid) + "\",";
-            body += "\"isOpen\":" + std::string(credentials[i].password.empty() ? "true" : "false") + "}";
+            body += "\"isOpen\":" + std::string(credentials[i].password.empty() ? "true" : "false") + ",";
+            body += "\"ipMode\":\"" + std::string(credentials[i].ip_mode == WifiIpMode::Static ? "static" : "dhcp") + "\"}";
         }
         body += "]}";
         SendJson(req, body);

@@ -16,6 +16,7 @@
 #include <freertos/event_groups.h>
 
 #include "dns_server.h"
+#include "ssid_manager.h"
 
 class WifiConfigurationAp {
 public:
@@ -33,14 +34,15 @@ public:
     void Stop();
 
     bool ConnectToWifi(const std::string& ssid, const std::string& password);
-    void Save(const std::string& ssid, const std::string& password);
+    bool ConnectToWifi(const SsidItem& item);
+    void Save(const SsidItem& item);
     void RemoveCredential(const std::string& ssid);
     std::vector<wifi_ap_record_t> GetAccessPoints();
     std::string GetSsid() const;
     std::string GetPassword() const;
     std::string GetWebServerUrl() const;
     std::string GetPendingSsid() const;
-    void OnCredentialsSubmitted(std::function<void(const std::string& ssid, const std::string& password)> callback);
+    void OnCredentialsSubmitted(std::function<void(const SsidItem& item)> callback);
     void OnExitRequested(std::function<void()> callback);
 
 private:
@@ -68,7 +70,7 @@ private:
     esp_netif_t* ap_netif_ = nullptr;
     esp_netif_t* sta_netif_ = nullptr;
     std::vector<wifi_ap_record_t> ap_records_;
-    std::function<void(const std::string& ssid, const std::string& password)> on_credentials_submitted_;
+    std::function<void(const SsidItem& item)> on_credentials_submitted_;
     std::function<void()> on_exit_requested_;
 };
 

@@ -12,6 +12,8 @@
 #include <esp_wifi_types.h>
 #include <freertos/FreeRTOS.h>
 
+#include "ssid_manager.h"
+
 class WifiStation {
 public:
     WifiStation();
@@ -29,6 +31,7 @@ public:
     int GetChannel() const;
     std::vector<wifi_ap_record_t> GetAccessPoints() const;
     bool ConnectToWifi(const std::string& ssid, const std::string& password);
+    bool ConnectToWifi(const SsidItem& item);
     void SetScanIntervalSeconds(int scan_interval_seconds);
 
     void OnScanBegin(std::function<void()> on_scan_begin);
@@ -46,6 +49,8 @@ private:
     void HandleScanDone();
     void HandleDisconnected();
     bool ConnectToWifiLocked(const std::string& ssid, const std::string& password);
+    bool ConnectToWifiLocked(const SsidItem& item);
+    bool ConfigureIpLocked(const SsidItem& item);
 
     mutable std::mutex mutex_;
     esp_netif_t* station_netif_ = nullptr;

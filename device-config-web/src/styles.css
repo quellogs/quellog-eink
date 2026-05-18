@@ -69,38 +69,6 @@ h1 {
   letter-spacing: 0;
 }
 
-.selected-network {
-  display: grid;
-  gap: 7px;
-  margin: 18px 0 20px;
-  padding: 14px;
-  border: 2px solid var(--line);
-  background: var(--soft);
-}
-
-.selected-network[data-state="empty"],
-.selected-network[data-state="loading"] {
-  background: transparent;
-  border-style: dashed;
-}
-
-.selected-label,
-.selected-source {
-  color: var(--muted);
-  font-size: 13px;
-}
-
-.selected-label {
-  font-weight: 800;
-}
-
-.selected-network strong {
-  min-width: 0;
-  overflow-wrap: anywhere;
-  font-size: 24px;
-  line-height: 1.15;
-}
-
 .field {
   display: block;
   margin-top: 16px;
@@ -110,6 +78,50 @@ h1 {
   display: block;
   margin-bottom: 7px;
   font-weight: 800;
+}
+
+.mode-field {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  padding: 0;
+  border: 0;
+}
+
+.mode-field legend {
+  grid-column: 1 / -1;
+  margin-bottom: 7px;
+  font-weight: 800;
+}
+
+.mode-field label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 46px;
+  padding: 0 12px;
+  border: 2px solid var(--line);
+  background: #fffdf7;
+  font-weight: 800;
+}
+
+.mode-field input {
+  width: auto;
+  min-height: auto;
+}
+
+.mode-field span {
+  margin: 0;
+}
+
+.static-settings {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0 10px;
+}
+
+.static-settings[hidden] {
+  display: none;
 }
 
 input {
@@ -182,6 +194,49 @@ input:disabled {
   font-weight: 800;
 }
 
+.saved-networks {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 2px solid var(--line);
+}
+
+.saved-networks h2 {
+  margin: 0 0 10px;
+  font-size: 18px;
+  line-height: 1.2;
+  letter-spacing: 0;
+}
+
+.credentials-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.credentials-list li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  min-height: 42px;
+  padding: 8px 10px;
+  border: 2px solid var(--line);
+  background: #fffdf7;
+}
+
+.credentials-list strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.credentials-list span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
 .shell-done {
   min-height: 100vh;
   display: grid;
@@ -215,5 +270,9 @@ input:disabled {
 
   h1 {
     font-size: 30px;
+  }
+
+  .static-settings {
+    grid-template-columns: 1fr;
   }
 }

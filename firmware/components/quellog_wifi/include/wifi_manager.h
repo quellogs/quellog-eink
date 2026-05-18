@@ -9,6 +9,8 @@
 
 #include <esp_wifi_types.h>
 
+#include "ssid_manager.h"
+
 class WifiConfigurationAp;
 class WifiStation;
 
@@ -64,7 +66,7 @@ private:
     ~WifiManager();
 
     void NotifyEvent(WifiEvent event);
-    void HandleCredentialsSubmitted(const std::string& ssid, const std::string& password);
+    void HandleCredentialsSubmitted(const SsidItem& item);
     void HandleStationConnected();
     void HandleStationDisconnected();
     void HandleConfigExitRequested();
@@ -72,7 +74,7 @@ private:
 
     WifiManagerConfig config_;
     std::string pending_config_ssid_;
-    std::string pending_config_password_;
+    SsidItem pending_config_item_;
     std::string retry_config_ssid_;
     bool pending_config_credentials_submitted_ = false;
     bool retry_config_ap_on_disconnect_ = false;

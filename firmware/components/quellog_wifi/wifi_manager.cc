@@ -214,7 +214,7 @@ bool WifiManager::ConnectToOpenWifi(const std::string& ssid) {
         }
         station = station_.get();
         pending_config_ssid_.clear();
-        pending_config_password_.clear();
+        pending_config_item_ = {};
         pending_config_credentials_submitted_ = false;
         retry_config_ssid_.clear();
         retry_config_ap_on_disconnect_ = false;
@@ -261,8 +261,7 @@ void WifiManager::StartConfigAp() {
     config_ap->SetPassword(config.ap_password);
     config_ap->SetLanguage(config.language);
     config_ap->SetPendingSsid(pending_ssid);
-    config_ap->OnCredentialsSubmitted(
-        [this](const std::string& ssid, const std::string& password) { HandleCredentialsSubmitted(ssid, password); });
+    config_ap->OnCredentialsSubmitted([this](const SsidItem& item) { HandleCredentialsSubmitted(item); });
     config_ap->OnExitRequested([this]() { HandleConfigExitRequested(); });
     config_ap->Start();
 
@@ -284,7 +283,7 @@ void WifiManager::PrepareConfigApForSsid(const std::string& ssid) {
     {
         std::lock_guard<std::mutex> lock(mutex_);
         pending_config_ssid_ = ssid;
-        pending_config_password_.clear();
+        pending_config_item_ = {};
         pending_config_credentials_submitted_ = false;
         retry_config_ssid_.clear();
         retry_config_ap_on_disconnect_ = false;
@@ -354,14 +353,17 @@ void WifiManager::SetEventCallback(std::function<void(WifiEvent)> callback) {
     event_callback_ = std::move(callback);
 }
 
-void WifiManager::HandleCredentialsSubmitted(const std::string& ssid, const std::string& password) {
+void WifiManager::HandleCredentialsSubmitted(const SsidItem& item) {
     std::lock_guard<std::mutex> lock(mutex_);
-    pending_config_ssid_ = ssid;
-    pending_config_password_ = password;
+    pending_config_ssid_ = item.ssid;
+    pending_config_item_ = item;
     pending_config_credentials_submitted_ = true;
-    retry_config_ssid_ = ssid;
+    retry_config_ssid_ = item.ssid;
     retry_config_ap_on_disconnect_ = false;
-    ESP_LOGI(kTag, "credentials submitted for SSID '%s'", ssid.c_str());
+    ESP_LOGI(kTag,
+             "credentials submitted for SSID '%s' ip_mode=%s",
+             item.ssid.c_str(),
+             item.ip_mode == WifiIpMode::Static ? "static" : "dhcp");
 }
 
 void WifiManager::HandleStationConnected() {
@@ -404,15 +406,15 @@ void WifiManager::NotifyEvent(WifiEvent event) {
 
 void WifiManager::HandleConfigExitRequested() {
     std::string target_ssid;
-    std::string target_password;
+    SsidItem target_item;
     bool has_submitted_credentials = false;
     {
         std::lock_guard<std::mutex> lock(mutex_);
         target_ssid = pending_config_ssid_;
-        target_password = pending_config_password_;
+        target_item = pending_config_item_;
         has_submitted_credentials = pending_config_credentials_submitted_;
         pending_config_ssid_.clear();
-        pending_config_password_.clear();
+        pending_config_item_ = {};
         pending_config_credentials_submitted_ = false;
     }
 
@@ -441,7 +443,7 @@ void WifiManager::HandleConfigExitRequested() {
         station = station_.get();
     }
 
-    const bool started = station->ConnectToWifi(target_ssid, target_password);
+    const bool started = station->ConnectToWifi(target_item);
     if (started) {
         {
             std::lock_guard<std::mutex> lock(mutex_);
@@ -460,7 +462,7 @@ void WifiManager::ScheduleConfigApRestart(const std::string& ssid) {
     {
         std::lock_guard<std::mutex> lock(mutex_);
         pending_config_ssid_ = ssid;
-        pending_config_password_.clear();
+        pending_config_item_ = {};
         pending_config_credentials_submitted_ = false;
         retry_config_ssid_.clear();
         retry_config_ap_on_disconnect_ = false;

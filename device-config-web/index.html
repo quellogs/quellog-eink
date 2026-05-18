@@ -13,12 +13,6 @@
           <h1>Wi-Fi 配网</h1>
         </header>
 
-        <section id="selected-network" class="selected-network" data-state="loading">
-          <span class="selected-label">墨水屏选择</span>
-          <strong id="selected-ssid">读取中</strong>
-          <span id="selected-source" class="selected-source">正在读取设备上的目标网络</span>
-        </section>
-
         <label class="field">
           <span>Wi‑Fi 名称</span>
           <input
@@ -47,8 +41,48 @@
           </div>
         </label>
 
+        <fieldset class="field mode-field">
+          <legend>IP 设置</legend>
+          <label>
+            <input type="radio" name="ip-mode" value="dhcp" checked />
+            <span>DHCP</span>
+          </label>
+          <label>
+            <input type="radio" name="ip-mode" value="static" />
+            <span>手动 IP</span>
+          </label>
+        </fieldset>
+
+        <section id="static-settings" class="static-settings" hidden>
+          <label class="field">
+            <span>IP 地址</span>
+            <input id="ip" name="ip" inputmode="numeric" autocomplete="off" placeholder="192.168.1.50" />
+          </label>
+          <label class="field">
+            <span>子网掩码</span>
+            <input id="netmask" name="netmask" inputmode="numeric" autocomplete="off" placeholder="255.255.255.0" />
+          </label>
+          <label class="field">
+            <span>网关</span>
+            <input id="gateway" name="gateway" inputmode="numeric" autocomplete="off" placeholder="192.168.1.1" />
+          </label>
+          <label class="field">
+            <span>主 DNS</span>
+            <input id="dns1" name="dns1" inputmode="numeric" autocomplete="off" placeholder="223.5.5.5" />
+          </label>
+          <label class="field">
+            <span>备 DNS</span>
+            <input id="dns2" name="dns2" inputmode="numeric" autocomplete="off" placeholder="可留空" />
+          </label>
+        </section>
+
         <button id="submit" class="primary-button" type="button">保存并连接</button>
         <p id="status" class="status" role="status" aria-live="polite"></p>
+
+        <section class="saved-networks" aria-labelledby="saved-title">
+          <h2 id="saved-title">已保存网络</h2>
+          <ul id="credentials" class="credentials-list"></ul>
+        </section>
       </section>
     </main>
     <script type="module" src="/src/index.js"></script>

@@ -44,14 +44,14 @@ export async function loadSetupContext() {
   return parseJsonResponse(response);
 }
 
-export async function submitCredentials(ssid, password) {
+export async function submitCredentials(payload) {
   const response = await fetch("/submit", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Accept: "application/json"
     },
-    body: JSON.stringify({ ssid, password })
+    body: JSON.stringify(payload)
   });
   return parseJsonResponse(response);
 }

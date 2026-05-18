@@ -10,8 +10,17 @@ function quellogMockApi() {
     { ssid: "Guest Network", rssi: -72, authmode: 0 }
   ];
   const savedCredentials = [
-    { ssid: "Quellog Studio", password: "studio-pass" },
-    { ssid: "Guest Network", password: "" }
+    { ssid: "Quellog Studio", password: "studio-pass", ipMode: "dhcp" },
+    {
+      ssid: "Guest Network",
+      password: "",
+      ipMode: "static",
+      ip: "192.168.1.60",
+      netmask: "255.255.255.0",
+      gateway: "192.168.1.1",
+      dns1: "223.5.5.5",
+      dns2: "119.29.29.29"
+    }
   ];
 
   return {
@@ -34,7 +43,8 @@ function quellogMockApi() {
           res.end(JSON.stringify({
             credentials: savedCredentials.map((item) => ({
               ssid: item.ssid,
-              isOpen: !item.password
+              isOpen: !item.password,
+              ipMode: item.ipMode || "dhcp"
             }))
           }));
           return;
@@ -62,11 +72,21 @@ function quellogMockApi() {
                 return;
               }
               const password = String(payload.password || "");
+              const ipMode = payload.ipMode === "static" ? "static" : "dhcp";
               const existingIndex = savedCredentials.findIndex((item) => item.ssid === ssid);
               if (existingIndex >= 0) {
                 savedCredentials.splice(existingIndex, 1);
               }
-              savedCredentials.unshift({ ssid, password });
+              savedCredentials.unshift({
+                ssid,
+                password,
+                ipMode,
+                ip: String(payload.ip || ""),
+                netmask: String(payload.netmask || ""),
+                gateway: String(payload.gateway || ""),
+                dns1: String(payload.dns1 || ""),
+                dns2: String(payload.dns2 || "")
+              });
               if (savedCredentials.length > 5) {
                 savedCredentials.length = 5;
               }
