@@ -1,5 +1,7 @@
 #include "application.h"
 
+#include <sdkconfig.h>
+
 #include <esp_timer.h>
 
 #include <algorithm>
@@ -113,8 +115,13 @@ TopStatusBarState Application::BuildTopStatusBarState(const AppContext& context)
 }
 
 bool Application::ShouldAutoRefresh(int64_t now_us) const {
-    (void)now_us;
-    return false;
+    if (current_page_index_ != kStatsPageIndex) {
+        return false;
+    }
+
+    constexpr int64_t kAutoRefreshIntervalUs =
+        static_cast<int64_t>(CONFIG_QUELLOG_AUTO_REFRESH_SECONDS) * 1000 * 1000;
+    return now_us - last_refresh_us_ >= kAutoRefreshIntervalUs;
 }
 
 bool Application::HasBatteryChargingStateChanged(int64_t now_us) {

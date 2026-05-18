@@ -80,7 +80,7 @@ config QUELLOG_INPUT_DEBOUNCE_MS
 
 config QUELLOG_AUTO_REFRESH_SECONDS
     int "Timed refresh interval in seconds"
-    default 30
+    default 1800
     range 5 3600
 
 endmenu
