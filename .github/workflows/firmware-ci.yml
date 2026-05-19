@@ -28,6 +28,7 @@ jobs:
     defaults:
       run:
         working-directory: firmware
+        shell: bash
 
     steps:
       - name: Checkout repository
@@ -40,8 +41,7 @@ jobs:
 
       - name: Build ESP-IDF project
         run: |
-          idf.py set-target esp32s3
-          idf.py build
+          ./build.sh
 
       - name: Upload firmware build artifacts
         if: success()

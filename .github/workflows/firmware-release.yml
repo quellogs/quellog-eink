@@ -18,6 +18,7 @@ jobs:
     defaults:
       run:
         working-directory: firmware
+        shell: bash
 
     steps:
       - name: Checkout repository
