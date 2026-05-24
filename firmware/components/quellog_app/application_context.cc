@@ -115,7 +115,7 @@ TopStatusBarState Application::BuildTopStatusBarState(const AppContext& context)
 }
 
 bool Application::ShouldAutoRefresh(int64_t now_us) const {
-    if (current_page_index_ != kStatsPageIndex) {
+    if (current_page_index_ != kStatsPageIndex && !IsRecentRecordsPage()) {
         return false;
     }
 
@@ -165,7 +165,9 @@ void Application::HandleNetworkEvent(NetworkEvent event, const std::string& data
         case NetworkEvent::Connected:
             settings_wifi_ap_modal_visible_ = false;
             settings_wifi_connecting_modal_visible_ = false;
-            refresh_requested_.store(true, std::memory_order_release);
+            if (refresh_waiting_for_network_) {
+                refresh_requested_.store(true, std::memory_order_release);
+            }
             network_state_dirty_.store(true, std::memory_order_release);
             break;
         case NetworkEvent::Disconnected:
@@ -189,6 +191,11 @@ void Application::HandleNetworkEvent(NetworkEvent event, const std::string& data
 }
 
 void Application::UpdateDeviceState() {
+    if (!board_.IsWifiEnabled() && !IsSettingsPage()) {
+        state_.store(kDeviceStateIdle, std::memory_order_release);
+        return;
+    }
+
     const NetworkState network_state = board_.GetNetworkState();
     DeviceState next_state = kDeviceStateIdle;
     switch (network_state) {
@@ -214,7 +221,7 @@ void Application::UpdateDeviceState() {
 }
 
 void Application::UpdateSettingsWebServer() {
-    if (board_.IsWifiConnected() && !board_.IsWifiConfigMode()) {
+    if (board_.IsWifiConnected() && !board_.IsWifiConfigMode() && !refresh_waiting_for_network_) {
         settings_web_server_.Start();
         return;
     }

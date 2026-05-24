@@ -10,6 +10,7 @@
 namespace {
 
 constexpr char kTag[] = "Application";
+constexpr int kStatsPageIndex = 0;
 
 }  // namespace
 
@@ -25,9 +26,6 @@ void Application::Initialize() {
     board_.SetNetworkEventCallback([this](NetworkEvent event, const std::string& data) {
         HandleNetworkEvent(event, data);
     });
-    ESP_LOGI(kTag, "network start begin");
-    board_.StartNetwork();
-    ESP_LOGI(kTag, "network start end");
     LoadSettings();
     const DeviceApiConfig api_config = LoadDeviceApiConfig();
     dashboard_.period = stats_period_;
@@ -38,6 +36,9 @@ void Application::Initialize() {
     ESP_LOGI(kTag, "first render begin");
     RenderCurrentPage(true);
     ESP_LOGI(kTag, "first render end");
+    if (IsDeviceApiConfigured() && (current_page_index_ == kStatsPageIndex || IsRecentRecordsPage())) {
+        refresh_requested_.store(true, std::memory_order_release);
+    }
 }
 
 void Application::Run() {
@@ -51,6 +52,8 @@ void Application::Run() {
         if (ShouldAutoRefresh(now_us)) {
             TriggerRefresh();
         }
+
+        CheckRefreshNetworkTimeout(now_us);
 
         if (HasBatteryChargingStateChanged(now_us)) {
             RenderCurrentPage(false);

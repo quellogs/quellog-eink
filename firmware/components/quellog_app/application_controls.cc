@@ -7,6 +7,8 @@
 
 #include <algorithm>
 
+#include "device_api_settings.h"
+
 namespace {
 
 constexpr int kStatsPageIndex = 0;
@@ -21,6 +23,7 @@ constexpr int kSettingsItemCount = 6;
 constexpr int kVolumeStepPercent = 10;
 constexpr int kStatsPeriodCount = 3;
 constexpr int kRecentRecordsPageSize = 6;
+constexpr int64_t kRefreshNetworkTimeoutUs = 30 * 1000 * 1000;
 
 int CalculateRecentRecordsPageCount(int total_count) {
     if (total_count <= 0) {
@@ -208,6 +211,11 @@ void Application::OpenSettingsPage() {
     settings_restart_confirm_focused_ = false;
     settings_wifi_cached_networks_.clear();
     current_page_index_ = pages_.Count() - kSettingsPageOffsetFromEnd;
+    FinishRefreshNetworkSession(false);
+    if (!board_.IsWifiEnabled()) {
+        board_.StartNetwork();
+        network_state_dirty_.store(true, std::memory_order_release);
+    }
     UpdateDeviceState();
     RenderCurrentPage(false);
 }
@@ -222,6 +230,10 @@ void Application::CloseSettingsPage() {
     settings_wifi_cached_networks_.clear();
     current_page_index_ = std::clamp(settings_return_page_index_, 0, browseable_page_count - 1);
     SaveSettings();
+    FinishRefreshNetworkSession(false);
+    settings_web_server_.Stop();
+    board_.StopNetwork();
+    network_state_dirty_.store(true, std::memory_order_release);
     UpdateDeviceState();
     RenderCurrentPage(false);
 }
@@ -371,6 +383,7 @@ void Application::PreviousWifiFocus() {
 }
 
 void Application::CloseWifiApModal() {
+    FinishRefreshNetworkSession(false);
     settings_wifi_ap_modal_visible_ = false;
     settings_wifi_connecting_modal_visible_ = false;
     settings_restart_modal_visible_ = false;
@@ -384,20 +397,76 @@ void Application::CloseWifiApModal() {
 }
 
 void Application::TriggerRefresh() {
-    if (!board_.IsWifiConnected()) {
-        dashboard_.sync_status = "Wi-Fi 未连接";
+    if (!IsDeviceApiConfigured()) {
+        const bool should_stop_network = refresh_started_network_;
+        FinishRefreshNetworkSession(should_stop_network);
+        UpdateSettingsWebServer();
+        dashboard_.sync_status = "未配置服务接口";
         last_refresh_us_ = esp_timer_get_time();
         RenderCurrentPage(true);
         UpdateDeviceState();
         return;
     }
 
+    if (!board_.IsWifiConnected()) {
+        if (!refresh_waiting_for_network_) {
+            refresh_waiting_for_network_ = true;
+            refresh_started_network_ = !board_.IsWifiEnabled();
+            refresh_network_deadline_us_ = esp_timer_get_time() + kRefreshNetworkTimeoutUs;
+            if (refresh_started_network_) {
+                board_.StartNetwork();
+            }
+        }
+        dashboard_.sync_status = "正在连接 Wi-Fi";
+        last_refresh_us_ = esp_timer_get_time();
+        network_state_dirty_.store(true, std::memory_order_release);
+        RenderCurrentPage(true);
+        UpdateDeviceState();
+        return;
+    }
+
+    const bool should_stop_network = refresh_started_network_;
+    refresh_waiting_for_network_ = false;
+    refresh_started_network_ = false;
+    refresh_network_deadline_us_ = 0;
     state_.store(kDeviceStateRefreshing, std::memory_order_release);
     ++refresh_count_;
     ApplyDashboardLoadResult(LoadDashboardData(stats_period_));
     last_refresh_us_ = esp_timer_get_time();
+    FinishRefreshNetworkSession(should_stop_network);
+    UpdateSettingsWebServer();
     RenderCurrentPage(true);
     UpdateDeviceState();
+}
+
+void Application::CheckRefreshNetworkTimeout(int64_t now_us) {
+    if (!refresh_waiting_for_network_ || refresh_network_deadline_us_ == 0 || now_us < refresh_network_deadline_us_) {
+        return;
+    }
+
+    const bool should_stop_network = refresh_started_network_;
+    FinishRefreshNetworkSession(should_stop_network);
+    UpdateSettingsWebServer();
+    dashboard_.sync_status = "Wi-Fi 连接超时";
+    last_refresh_us_ = now_us;
+    network_state_dirty_.store(true, std::memory_order_release);
+    RenderCurrentPage(true);
+    UpdateDeviceState();
+}
+
+void Application::FinishRefreshNetworkSession(bool stop_network) {
+    refresh_waiting_for_network_ = false;
+    refresh_started_network_ = false;
+    refresh_network_deadline_us_ = 0;
+    if (stop_network) {
+        settings_web_server_.Stop();
+        board_.StopNetwork();
+    }
+}
+
+bool Application::IsDeviceApiConfigured() const {
+    const DeviceApiConfig api_config = LoadDeviceApiConfig();
+    return !api_config.base_url.empty() && !api_config.api_token.empty();
 }
 
 void Application::OpenStatsPeriodModal() {
@@ -507,6 +576,7 @@ void Application::RequestDeviceRestart() {
 void Application::ExecuteWifiFocus() {
     if (settings_wifi_focus_index_ <= 0) {
         if (board_.IsWifiEnabled()) {
+            FinishRefreshNetworkSession(false);
             settings_web_server_.Stop();
             board_.StopNetwork();
             settings_wifi_focus_index_ = 0;

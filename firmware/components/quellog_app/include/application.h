@@ -56,6 +56,9 @@ private:
     void RequestDeviceRestart();
     void TriggerRefresh();
     void ExecuteSettingsItem();
+    void CheckRefreshNetworkTimeout(int64_t now_us);
+    void FinishRefreshNetworkSession(bool stop_network);
+    bool IsDeviceApiConfigured() const;
     int GetWifiFocusItemCount() const;
     WifiSettingsMode GetCurrentWifiSettingsMode() const;
     bool IsSettingsPage() const;
@@ -82,6 +85,9 @@ private:
     DashboardData dashboard_;
     SettingsWebServer settings_web_server_;
     std::atomic<bool> refresh_requested_{false};
+    bool refresh_waiting_for_network_ = false;
+    bool refresh_started_network_ = false;
+    int64_t refresh_network_deadline_us_ = 0;
     int recent_records_page_index_ = 0;
     DashboardPeriod stats_period_ = DashboardPeriod::Month;
     bool stats_period_modal_visible_ = false;

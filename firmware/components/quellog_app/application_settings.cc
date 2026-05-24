@@ -51,5 +51,7 @@ int Application::NormalizeSavedPageIndex(int saved_page_index) const {
     }
 
     const int page_count = std::max(1, pages_.Count());
-    return std::clamp(normalized_index, 0, page_count - 1);
+    const int settings_page_index = page_count - 1;
+    normalized_index = std::clamp(normalized_index, 0, settings_page_index);
+    return normalized_index == settings_page_index ? kStatsPageIndex : normalized_index;
 }
