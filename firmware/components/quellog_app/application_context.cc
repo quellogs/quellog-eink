@@ -56,6 +56,15 @@ AppContext Application::BuildContext() const {
     context.volume_percent = board_.GetVolumePercent();
     context.wifi_ssid = board_.GetWifiSsid();
     context.wifi_ip = board_.GetWifiIpAddress();
+    const BoardWifiConnectionInfo wifi_connection = board_.GetWifiConnectionInfo();
+    context.wifi_connection = {
+        wifi_connection.ssid,
+        wifi_connection.ip_address,
+        wifi_connection.netmask,
+        wifi_connection.gateway,
+        wifi_connection.dns_main,
+        wifi_connection.dns_backup,
+    };
     context.wifi_ap_ssid = board_.GetWifiConfigApSsid();
     context.wifi_ap_url = board_.GetWifiConfigApUrl();
     context.settings_selected_item = settings_selected_item_;

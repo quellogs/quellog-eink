@@ -958,6 +958,18 @@ public:
         return WifiManager::GetInstance().GetIpAddress();
     }
 
+    BoardWifiConnectionInfo GetWifiConnectionInfo() const override {
+        const WifiConnectionInfo info = WifiManager::GetInstance().GetConnectionInfo();
+        return {
+            info.ssid,
+            info.ip_address,
+            info.netmask,
+            info.gateway,
+            info.dns_main,
+            info.dns_backup,
+        };
+    }
+
     std::string GetWifiConfigApSsid() const override {
         return WifiManager::GetInstance().GetApSsid();
     }

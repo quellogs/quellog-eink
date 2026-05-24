@@ -36,6 +36,15 @@ struct BoardWifiNetwork {
     bool secure = true;
 };
 
+struct BoardWifiConnectionInfo {
+    std::string ssid;
+    std::string ip_address;
+    std::string netmask;
+    std::string gateway;
+    std::string dns_main;
+    std::string dns_backup;
+};
+
 enum class NetworkState {
     Unknown = 0,
     Disconnected,
@@ -106,6 +115,7 @@ public:
     virtual NetworkState GetNetworkState() const { return NetworkState::Unknown; }
     virtual std::string GetWifiSsid() const { return ""; }
     virtual std::string GetWifiIpAddress() const { return ""; }
+    virtual BoardWifiConnectionInfo GetWifiConnectionInfo() const { return {}; }
     virtual std::string GetWifiConfigApSsid() const { return ""; }
     virtual std::string GetWifiConfigApUrl() const { return ""; }
     virtual void SetNetworkEventCallback(NetworkEventCallback callback) { (void)callback; }

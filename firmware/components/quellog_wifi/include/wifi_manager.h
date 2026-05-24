@@ -10,6 +10,7 @@
 #include <esp_wifi_types.h>
 
 #include "ssid_manager.h"
+#include "wifi_connection_info.h"
 
 class WifiConfigurationAp;
 class WifiStation;
@@ -42,6 +43,7 @@ public:
     bool IsConnected() const;
     std::string GetSsid() const;
     std::string GetIpAddress() const;
+    WifiConnectionInfo GetConnectionInfo() const;
     int GetRssi() const;
     int GetChannel() const;
     std::vector<wifi_ap_record_t> GetAccessPoints() const;

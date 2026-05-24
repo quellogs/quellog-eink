@@ -13,6 +13,7 @@
 #include <freertos/FreeRTOS.h>
 
 #include "ssid_manager.h"
+#include "wifi_connection_info.h"
 
 class WifiStation {
 public:
@@ -27,6 +28,7 @@ public:
     bool IsConnected() const;
     std::string GetSsid() const;
     std::string GetIpAddress() const;
+    WifiConnectionInfo GetConnectionInfo() const;
     int GetRssi() const;
     int GetChannel() const;
     std::vector<wifi_ap_record_t> GetAccessPoints() const;
@@ -59,7 +61,7 @@ private:
     esp_timer_handle_t scan_timer_ = nullptr;
     std::string current_ssid_;
     std::string connecting_ssid_;
-    std::string ip_address_;
+    WifiConnectionInfo connection_info_;
     std::vector<wifi_ap_record_t> ap_records_;
     bool running_ = false;
     bool connected_ = false;

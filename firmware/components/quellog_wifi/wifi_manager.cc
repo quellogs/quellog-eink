@@ -184,6 +184,11 @@ std::string WifiManager::GetIpAddress() const {
     return station_ != nullptr ? station_->GetIpAddress() : "";
 }
 
+WifiConnectionInfo WifiManager::GetConnectionInfo() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return station_ != nullptr ? station_->GetConnectionInfo() : WifiConnectionInfo{};
+}
+
 int WifiManager::GetRssi() const {
     std::lock_guard<std::mutex> lock(mutex_);
     return station_ != nullptr ? station_->GetRssi() : 0;

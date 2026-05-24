@@ -1015,33 +1015,20 @@ void Display::RenderSplitView(const SplitViewModel& model, int origin_y) {
         detail_cursor_y += kLineHeight;
     }
 
-    if (!model.wifi_items.empty()) {
-        detail_cursor_y += kSplitViewDetailOptionGap;
-    }
-    for (const WifiListItemModel& item : model.wifi_items) {
-        if (detail_cursor_y + kWifiListItemHeight > detail_rect.y + detail_rect.h - kSplitViewDetailPadding) {
-            break;
-        }
-        RenderWifiListItem(item,
-                           {detail_rect.x + kSplitViewDetailPadding,
-                            detail_cursor_y,
-                            detail_text_width,
-                            kWifiListItemHeight});
-        detail_cursor_y += kWifiListItemHeight + kSplitViewDetailOptionGap;
-    }
-
-    if ((!model.detail_blocks.empty() || !model.detail_options.empty() || !model.wifi_items.empty() ||
-         model.wifi_switch_visible) &&
+    if ((!model.detail_blocks.empty() || !model.detail_options.empty() || model.wifi_switch_visible) &&
         !model.detail_sections.empty()) {
         detail_cursor_y += kSplitViewSectionGap;
     }
 
     for (const SplitViewDetailSection& section : model.detail_sections) {
         const int item_count = static_cast<int>(section.items.size());
-        const int section_height = kSplitViewSectionHeaderHeight + (item_count * kSplitViewSectionRowHeight);
-        if (detail_cursor_y + section_height > detail_rect.y + detail_rect.h - kSplitViewDetailPadding) {
+        const int remaining_height = detail_rect.y + detail_rect.h - kSplitViewDetailPadding - detail_cursor_y;
+        if (remaining_height < kSplitViewSectionHeaderHeight + kSplitViewSectionRowHeight) {
             break;
         }
+        const int visible_item_count =
+            std::min(item_count, (remaining_height - kSplitViewSectionHeaderHeight) / kSplitViewSectionRowHeight);
+        const int section_height = kSplitViewSectionHeaderHeight + (visible_item_count * kSplitViewSectionRowHeight);
 
         const Rect section_rect = {
             detail_rect.x + kSplitViewDetailPadding,
@@ -1068,7 +1055,8 @@ void Display::RenderSplitView(const SplitViewModel& model, int origin_y) {
         label_width = ClampToRange(label_width, 52, std::max(52, section_rect.w / 4));
 
         int row_y = section_rect.y + kSplitViewSectionHeaderHeight;
-        for (const SplitViewDetailItem& item : section.items) {
+        for (int item_index = 0; item_index < visible_item_count; ++item_index) {
+            const SplitViewDetailItem& item = section.items[item_index];
             if (row_y > section_rect.y + kSplitViewSectionHeaderHeight) {
                 DrawLine(section_rect.x + kSplitViewSectionPadding,
                          row_y,
@@ -1091,6 +1079,21 @@ void Display::RenderSplitView(const SplitViewModel& model, int origin_y) {
         }
 
         detail_cursor_y += section_height + kSplitViewSectionGap;
+    }
+
+    if (!model.wifi_items.empty()) {
+        detail_cursor_y += kSplitViewDetailOptionGap;
+    }
+    for (const WifiListItemModel& item : model.wifi_items) {
+        if (detail_cursor_y + kWifiListItemHeight > detail_rect.y + detail_rect.h - kSplitViewDetailPadding) {
+            break;
+        }
+        RenderWifiListItem(item,
+                           {detail_rect.x + kSplitViewDetailPadding,
+                            detail_cursor_y,
+                            detail_text_width,
+                            kWifiListItemHeight});
+        detail_cursor_y += kWifiListItemHeight + kSplitViewDetailOptionGap;
     }
 
     if (!model.detail_qr_payload.empty()) {

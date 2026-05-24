@@ -63,6 +63,15 @@ struct WifiNetworkInfo {
     bool secure = true;
 };
 
+struct AppWifiConnectionInfo {
+    std::string ssid;
+    std::string ip_address;
+    std::string netmask;
+    std::string gateway;
+    std::string dns_main;
+    std::string dns_backup;
+};
+
 enum class WifiSettingsMode {
     Off = 0,
     Station,
@@ -92,6 +101,7 @@ struct AppContext {
     std::string device_uuid;
     std::string wifi_ssid;
     std::string wifi_ip;
+    AppWifiConnectionInfo wifi_connection;
     std::string wifi_ap_ssid;
     std::string wifi_ap_url;
     int settings_selected_item = 0;

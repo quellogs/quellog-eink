@@ -21,6 +21,13 @@ std::string FormatIp(esp_ip4_addr_t address) {
     return std::string(buffer);
 }
 
+std::string FormatDnsIp(const esp_netif_dns_info_t& dns_info) {
+    if (dns_info.ip.type != ESP_IPADDR_TYPE_V4) {
+        return "";
+    }
+    return FormatIp(dns_info.ip.u_addr.ip4);
+}
+
 }  // namespace
 
 WifiStation::WifiStation() = default;
@@ -60,7 +67,7 @@ void WifiStation::Start(bool start_scan) {
     connecting_ = false;
     current_ssid_.clear();
     connecting_ssid_.clear();
-    ip_address_.clear();
+    connection_info_ = {};
     ap_records_.clear();
     if (start_scan) {
         ESP_LOGI(kTag, "station started, begin scan");
@@ -110,7 +117,7 @@ void WifiStation::Stop() {
     scan_in_progress_ = false;
     current_ssid_.clear();
     connecting_ssid_.clear();
-    ip_address_.clear();
+    connection_info_ = {};
     ap_records_.clear();
     ESP_LOGI(kTag, "station stopped");
 }
@@ -127,7 +134,12 @@ std::string WifiStation::GetSsid() const {
 
 std::string WifiStation::GetIpAddress() const {
     std::lock_guard<std::mutex> lock(mutex_);
-    return ip_address_;
+    return connection_info_.ip_address;
+}
+
+WifiConnectionInfo WifiStation::GetConnectionInfo() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return connection_info_;
 }
 
 int WifiStation::GetRssi() const {
@@ -320,7 +332,7 @@ bool WifiStation::ConnectToWifiLocked(const SsidItem& item) {
     connecting_ = true;
     scan_in_progress_ = false;
     current_ssid_.clear();
-    ip_address_.clear();
+    connection_info_ = {};
     connecting_ssid_ = ssid;
     ESP_LOGI(kTag, "connecting to SSID '%s'", ssid.c_str());
     err = esp_wifi_connect();
@@ -423,7 +435,7 @@ void WifiStation::HandleDisconnected() {
         connected_ = false;
         connecting_ = false;
         current_ssid_.clear();
-        ip_address_.clear();
+        connection_info_ = {};
         scan_in_progress_ = false;
         if (!was_active) {
             ScheduleScan();
@@ -472,22 +484,37 @@ void WifiStation::IpEventHandler(void* arg,
 
     std::function<void(const std::string&)> on_connected_callback;
     std::string ssid;
+    std::string ip_address;
     {
         std::lock_guard<std::mutex> lock(self->mutex_);
         self->connected_ = true;
         self->connecting_ = false;
         self->current_ssid_ = self->connecting_ssid_;
-        self->ip_address_ = FormatIp(got_ip->ip_info.ip);
+        self->connection_info_.ssid = self->current_ssid_;
+        self->connection_info_.ip_address = FormatIp(got_ip->ip_info.ip);
+        self->connection_info_.netmask = FormatIp(got_ip->ip_info.netmask);
+        self->connection_info_.gateway = FormatIp(got_ip->ip_info.gw);
+        if (self->station_netif_ != nullptr) {
+            esp_netif_dns_info_t dns_info = {};
+            if (esp_netif_get_dns_info(self->station_netif_, ESP_NETIF_DNS_MAIN, &dns_info) == ESP_OK) {
+                self->connection_info_.dns_main = FormatDnsIp(dns_info);
+            }
+            dns_info = {};
+            if (esp_netif_get_dns_info(self->station_netif_, ESP_NETIF_DNS_BACKUP, &dns_info) == ESP_OK) {
+                self->connection_info_.dns_backup = FormatDnsIp(dns_info);
+            }
+        }
         self->scan_in_progress_ = false;
         self->connecting_ssid_.clear();
         ssid = self->current_ssid_;
+        ip_address = self->connection_info_.ip_address;
         on_connected_callback = self->on_connected_;
         if (self->scan_timer_ != nullptr) {
             esp_timer_stop(self->scan_timer_);
         }
     }
 
-    ESP_LOGI(kTag, "station got IP %s for SSID '%s'", self->ip_address_.c_str(), ssid.c_str());
+    ESP_LOGI(kTag, "station got IP %s for SSID '%s'", ip_address.c_str(), ssid.c_str());
     if (on_connected_callback) {
         on_connected_callback(ssid);
     }

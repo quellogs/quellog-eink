@@ -43,6 +43,20 @@ std::string BuildOpenWifiQrPayload(const std::string& ssid) {
     return "WIFI:T:nopass;S:" + EscapeWifiQrField(ssid) + ";;";
 }
 
+bool IsEmptyIpv4(const std::string& value) {
+    return value.empty() || value == "0.0.0.0";
+}
+
+std::string BuildDnsValue(const AppWifiConnectionInfo& wifi) {
+    if (IsEmptyIpv4(wifi.dns_main)) {
+        return "";
+    }
+    if (IsEmptyIpv4(wifi.dns_backup) || wifi.dns_backup == wifi.dns_main) {
+        return wifi.dns_main;
+    }
+    return wifi.dns_main + " / " + wifi.dns_backup;
+}
+
 std::string BuildBluetoothDeviceName(const std::string& uuid) {
     std::string compact_uuid;
     compact_uuid.reserve(uuid.size());
@@ -77,11 +91,30 @@ void AppendWifiSettingsDetail(const AppContext& context, SplitViewModel* split_v
     }
 
     if (context.wifi_connected) {
-        split_view->detail_blocks.push_back({"已连接  " + context.wifi_ssid});
-        if (!context.wifi_ip.empty()) {
-            split_view->detail_blocks.push_back({"IP  " + context.wifi_ip});
-            split_view->detail_blocks.push_back({"设置  http://" + context.wifi_ip});
+        const AppWifiConnectionInfo& wifi = context.wifi_connection;
+        SplitViewDetailSection network_section;
+        network_section.title = "网络";
+        network_section.items.push_back({"SSID", wifi.ssid.empty() ? context.wifi_ssid : wifi.ssid});
+        if (!IsEmptyIpv4(wifi.ip_address)) {
+            network_section.items.push_back({"IP", wifi.ip_address});
+        } else if (!IsEmptyIpv4(context.wifi_ip)) {
+            network_section.items.push_back({"IP", context.wifi_ip});
         }
+        if (!IsEmptyIpv4(wifi.gateway)) {
+            network_section.items.push_back({"网关", wifi.gateway});
+        }
+        const std::string dns_value = BuildDnsValue(wifi);
+        if (!dns_value.empty()) {
+            network_section.items.push_back({"DNS", dns_value});
+        }
+        if (!IsEmptyIpv4(wifi.netmask)) {
+            network_section.items.push_back({"子网掩码", wifi.netmask});
+        }
+        const std::string settings_ip = IsEmptyIpv4(wifi.ip_address) ? context.wifi_ip : wifi.ip_address;
+        if (!IsEmptyIpv4(settings_ip)) {
+            network_section.items.push_back({"设置", "http://" + settings_ip});
+        }
+        split_view->detail_sections.push_back(network_section);
     } else if (context.wifi_connecting) {
         split_view->detail_blocks.push_back({"正在连接..."});
     } else {
