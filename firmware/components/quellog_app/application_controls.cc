@@ -402,6 +402,7 @@ void Application::TriggerRefresh() {
         FinishRefreshNetworkSession(should_stop_network);
         UpdateSettingsWebServer();
         dashboard_.sync_status = "未配置服务接口";
+        dashboard_data_state_ = DashboardDataState::NotConfigured;
         last_refresh_us_ = esp_timer_get_time();
         RenderCurrentPage(true);
         UpdateDeviceState();
@@ -418,6 +419,7 @@ void Application::TriggerRefresh() {
             }
         }
         dashboard_.sync_status = "正在连接 Wi-Fi";
+        dashboard_data_state_ = DashboardDataState::Loading;
         last_refresh_us_ = esp_timer_get_time();
         network_state_dirty_.store(true, std::memory_order_release);
         RenderCurrentPage(true);
@@ -430,6 +432,7 @@ void Application::TriggerRefresh() {
     refresh_started_network_ = false;
     refresh_network_deadline_us_ = 0;
     state_.store(kDeviceStateRefreshing, std::memory_order_release);
+    dashboard_data_state_ = DashboardDataState::Loading;
     ++refresh_count_;
     ApplyDashboardLoadResult(LoadDashboardData(stats_period_));
     last_refresh_us_ = esp_timer_get_time();
@@ -448,6 +451,7 @@ void Application::CheckRefreshNetworkTimeout(int64_t now_us) {
     FinishRefreshNetworkSession(should_stop_network);
     UpdateSettingsWebServer();
     dashboard_.sync_status = "Wi-Fi 连接超时";
+    dashboard_data_state_ = DashboardDataState::Error;
     last_refresh_us_ = now_us;
     network_state_dirty_.store(true, std::memory_order_release);
     RenderCurrentPage(true);
@@ -501,10 +505,12 @@ void Application::ApplyStatsPeriodFocus() {
 void Application::ApplyDashboardLoadResult(const DashboardLoadResult& result) {
     if (result.success) {
         dashboard_ = result.data;
+        dashboard_data_state_ = DashboardDataState::Ready;
         return;
     }
 
     dashboard_.sync_status = result.status_message.empty() ? "同步失败" : result.status_message;
+    dashboard_data_state_ = DashboardDataState::Error;
 }
 
 void Application::ExecuteSettingsItem() {

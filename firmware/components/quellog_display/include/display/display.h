@@ -150,6 +150,7 @@ struct PageModel {
     std::vector<SummaryMetricModel> summary_metrics;
     std::vector<TextBlockModel> text_blocks;
     std::vector<BarChartModel> bar_charts;
+    std::string centered_message;
     RecentRecordListModel recent_records;
     SplitViewModel split_view;
     ModalModel modal;
@@ -200,6 +201,7 @@ protected:
     void RenderWifiListItem(const WifiListItemModel& item, const Rect& rect);
     void DrawWifiSignalIcon(int x, int y, int rssi, PixelColor color);
     void RenderSummaryMetrics(const std::vector<SummaryMetricModel>& metrics, int* cursor_y);
+    void RenderCenteredMessage(const std::string& message, int origin_y);
     void RenderBarChart(const BarChartModel& model, const Rect& rect);
     void RenderRecentRecords(const RecentRecordListModel& model, int origin_y);
     void RenderSplitView(const SplitViewModel& model, int origin_y);

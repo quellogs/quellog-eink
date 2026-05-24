@@ -1,8 +1,22 @@
 #include "recent_records_page.h"
 
 #include <algorithm>
+#include <string>
 
 namespace {
+
+std::string GetDashboardMessage(const AppContext& context) {
+    switch (context.dashboard_data_state) {
+        case DashboardDataState::Loading:
+            return "数据加载中";
+        case DashboardDataState::Error:
+        case DashboardDataState::NotConfigured:
+            return context.dashboard.sync_status.empty() ? "同步失败" : context.dashboard.sync_status;
+        case DashboardDataState::Ready:
+        default:
+            return "";
+    }
+}
 
 std::string FormatAmount(int64_t cents) {
     const bool negative = cents < 0;
@@ -24,7 +38,18 @@ int CalculatePageCount(int total_count, int page_size) {
 
 PageModel RecentRecordsPage::BuildModel(const AppContext& context) const {
     PageModel model;
+    const std::string dashboard_message = GetDashboardMessage(context);
+    if (!dashboard_message.empty()) {
+        model.centered_message = dashboard_message;
+        return model;
+    }
+
     const int total_count = static_cast<int>(context.dashboard.recent_records.size());
+    if (total_count <= 0) {
+        model.centered_message = "暂无数据";
+        return model;
+    }
+
     const int page_size = std::max(1, context.recent_records_page_size);
     const int page_count = CalculatePageCount(total_count, page_size);
     const int page_index = page_count > 0 ? std::clamp(context.recent_records_page_index, 0, page_count - 1) : 0;

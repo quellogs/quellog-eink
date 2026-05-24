@@ -27,6 +27,15 @@ const char* DashboardPeriodLabel(DashboardPeriod period) {
     }
 }
 
+std::string FormatAmount(int64_t cents) {
+    const bool negative = cents < 0;
+    const int64_t abs_cents = negative ? -cents : cents;
+    const long long whole = static_cast<long long>(abs_cents / 100);
+    const long long fraction = static_cast<long long>(abs_cents % 100);
+    return std::string(negative ? "-" : "") + std::to_string(whole) + "." +
+        (fraction < 10 ? "0" : "") + std::to_string(fraction) + " 元";
+}
+
 }  // namespace
 
 AppContext Application::BuildContext() const {
@@ -76,6 +85,7 @@ AppContext Application::BuildContext() const {
     context.storage.nvs_total_kb = storage.nvs_total_kb;
     context.storage.nvs_used_kb = storage.nvs_used_kb;
     context.dashboard = dashboard_;
+    context.dashboard_data_state = dashboard_data_state_;
     context.recent_records_page_index = recent_records_page_index_;
     context.recent_records_page_size = kRecentRecordsPageSize;
     context.stats_period = stats_period_;
@@ -103,6 +113,8 @@ TopStatusBarState Application::BuildTopStatusBarState(const AppContext& context)
     if (context.page_index == kStatsPageIndex) {
         state.title += " - ";
         state.title += DashboardPeriodLabel(context.stats_period);
+        state.title += " - ";
+        state.title += FormatAmount(context.dashboard.period_expense_cents);
     }
     state.wifi_visible = context.wifi_enabled;
     state.wifi_connected = context.wifi_connected;

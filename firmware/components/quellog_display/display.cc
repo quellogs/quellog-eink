@@ -281,6 +281,13 @@ void Display::RenderPage(const PageModel& model, const TopStatusBarState& top_st
         RenderSummaryMetrics(model.summary_metrics, &cursor_y);
     }
 
+    if (!model.centered_message.empty()) {
+        RenderCenteredMessage(model.centered_message, cursor_y);
+        RenderModal(model.modal);
+        EndPage();
+        return;
+    }
+
     if (model.recent_records.visible) {
         RenderRecentRecords(model.recent_records, cursor_y);
         RenderModal(model.modal);
@@ -749,6 +756,14 @@ void Display::RenderSummaryMetrics(const std::vector<SummaryMetricModel>& metric
     }
 
     *cursor_y += kSummaryCardHeight + kSummarySectionGap;
+}
+
+void Display::RenderCenteredMessage(const std::string& message, int origin_y) {
+    const int available_height = ClampNonNegative(height_ - origin_y - kPagePadding);
+    const int inner_width = ClampNonNegative(width_ - (kPagePadding * 2));
+    const int message_y = origin_y + std::max(0, (available_height - kLineHeight) / 2);
+    const std::string fitted_message = FitText(message, inner_width);
+    DrawText({kPagePadding, message_y, inner_width, kLineHeight}, fitted_message.c_str(), TextAlign::Center);
 }
 
 void Display::RenderBarChart(const BarChartModel& model, const Rect& rect) {

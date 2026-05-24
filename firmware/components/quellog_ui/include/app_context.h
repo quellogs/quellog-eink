@@ -41,6 +41,13 @@ struct DashboardData {
     std::vector<CategorySummary> categories;
 };
 
+enum class DashboardDataState {
+    Loading = 0,
+    Ready,
+    Error,
+    NotConfigured,
+};
+
 struct StorageInfo {
     bool available = false;
     uint32_t flash_total_kb = 0;
@@ -100,6 +107,7 @@ struct AppContext {
     std::vector<WifiNetworkInfo> wifi_networks;
     StorageInfo storage;
     DashboardData dashboard;
+    DashboardDataState dashboard_data_state = DashboardDataState::Loading;
     int recent_records_page_index = 0;
     int recent_records_page_size = 6;
     DashboardPeriod stats_period = DashboardPeriod::Month;

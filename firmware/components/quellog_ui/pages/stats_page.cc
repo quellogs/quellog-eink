@@ -7,6 +7,19 @@ namespace {
 
 constexpr int kPreferredVisibleCategoryCount = 9;
 
+std::string GetDashboardMessage(const AppContext& context) {
+    switch (context.dashboard_data_state) {
+        case DashboardDataState::Loading:
+            return "数据加载中";
+        case DashboardDataState::Error:
+        case DashboardDataState::NotConfigured:
+            return context.dashboard.sync_status.empty() ? "同步失败" : context.dashboard.sync_status;
+        case DashboardDataState::Ready:
+        default:
+            return "";
+    }
+}
+
 const char* GetPeriodLabel(DashboardPeriod period) {
     switch (period) {
         case DashboardPeriod::Quarter:
@@ -57,8 +70,11 @@ int64_t GetMaxAmountCents(const std::vector<BarChartItem>& items) {
 
 PageModel StatsPage::BuildModel(const AppContext& context) const {
     PageModel model;
-    if (context.dashboard.categories.empty()) {
-        model.text_blocks.push_back({"暂无分类统计。"});
+    const std::string dashboard_message = GetDashboardMessage(context);
+    if (!dashboard_message.empty()) {
+        model.centered_message = dashboard_message;
+    } else if (context.dashboard.categories.empty()) {
+        model.centered_message = "暂无数据";
     } else {
         const std::vector<BarChartItem> items =
             BuildTopSpendingChartItems(context.dashboard.categories, kPreferredVisibleCategoryCount);

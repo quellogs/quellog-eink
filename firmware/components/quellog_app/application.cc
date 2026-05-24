@@ -30,6 +30,9 @@ void Application::Initialize() {
     const DeviceApiConfig api_config = LoadDeviceApiConfig();
     dashboard_.period = stats_period_;
     dashboard_.sync_status = api_config.base_url.empty() || api_config.api_token.empty() ? "未配置服务接口" : "等待同步";
+    dashboard_data_state_ =
+        api_config.base_url.empty() || api_config.api_token.empty() ? DashboardDataState::NotConfigured
+                                                                   : DashboardDataState::Loading;
     state_.store(kDeviceStateStarting, std::memory_order_release);
     UpdateDeviceState();
     last_refresh_us_ = esp_timer_get_time();

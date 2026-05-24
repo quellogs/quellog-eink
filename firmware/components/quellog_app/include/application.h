@@ -83,6 +83,7 @@ private:
     int current_page_index_ = 0;
     std::string device_alias_ = "Quellog E-Ink";
     DashboardData dashboard_;
+    DashboardDataState dashboard_data_state_ = DashboardDataState::Loading;
     SettingsWebServer settings_web_server_;
     std::atomic<bool> refresh_requested_{false};
     bool refresh_waiting_for_network_ = false;
