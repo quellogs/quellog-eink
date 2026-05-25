@@ -44,6 +44,9 @@ void Application::Initialize() {
 }
 
 void Application::Run() {
+    app_task_ = xTaskGetCurrentTaskHandle();
+    board_.SetInputWakeTask(app_task_);
+
     while (true) {
         InputEvent event;
         if (board_.PollInput(event)) {
@@ -71,6 +74,7 @@ void Application::Run() {
             TriggerRefresh();
         }
 
-        vTaskDelay(pdMS_TO_TICKS(50));
+        const int wait_ms = CalculateIdleWaitMs(esp_timer_get_time());
+        ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(wait_ms));
     }
 }

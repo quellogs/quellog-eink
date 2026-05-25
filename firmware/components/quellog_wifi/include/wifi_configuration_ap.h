@@ -2,6 +2,7 @@
 #define QUELLOG_WIFI_CONFIGURATION_AP_H_
 
 #include <functional>
+#include <atomic>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -53,7 +54,8 @@ private:
     void StartAccessPoint();
     void StartWebServer();
     void ScheduleExit();
-    void ScheduleScan();
+    void ScheduleScan(int delay_ms = 10000);
+    void RequestScanIfStale();
 
     mutable std::mutex mutex_;
     std::unique_ptr<DnsServer> dns_server_;
@@ -67,6 +69,8 @@ private:
     esp_event_handler_instance_t got_ip_handler_ = nullptr;
     esp_timer_handle_t scan_timer_ = nullptr;
     bool is_connecting_ = false;
+    std::atomic<bool> scan_in_progress_{false};
+    std::atomic<int64_t> last_scan_us_{0};
     esp_netif_t* ap_netif_ = nullptr;
     esp_netif_t* sta_netif_ = nullptr;
     std::vector<wifi_ap_record_t> ap_records_;

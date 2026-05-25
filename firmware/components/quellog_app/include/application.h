@@ -6,6 +6,9 @@
 #include <string>
 #include <vector>
 
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
+
 #include "app_context.h"
 #include "boards/common/board.h"
 #include "dashboard_data_provider.h"
@@ -70,6 +73,8 @@ private:
     TopStatusBarState BuildTopStatusBarState(const AppContext& context) const;
     bool ShouldAutoRefresh(int64_t now_us) const;
     bool HasBatteryChargingStateChanged(int64_t now_us);
+    int CalculateIdleWaitMs(int64_t now_us) const;
+    void WakeApplicationTask();
     void HandleNetworkEvent(NetworkEvent event, const std::string& data);
     void UpdateDeviceState();
     void ApplyDashboardLoadResult(const DashboardLoadResult& result);
@@ -85,6 +90,7 @@ private:
     DashboardData dashboard_;
     DashboardDataState dashboard_data_state_ = DashboardDataState::Loading;
     SettingsWebServer settings_web_server_;
+    TaskHandle_t app_task_ = nullptr;
     std::atomic<bool> refresh_requested_{false};
     bool refresh_waiting_for_network_ = false;
     bool refresh_started_network_ = false;

@@ -60,6 +60,7 @@ constexpr int kChargeLedPwmFrequencyHz = 5000;
 constexpr int kChargeLedBreathPeriodMs = 2400;
 constexpr int kChargeLedBreathStepMs = 40;
 constexpr int kChargeLedIdleDelayMs = 500;
+constexpr int kChargeLedInactiveDelayMs = 30 * 1000;
 constexpr int kDefaultVolumePercent = 50;
 constexpr char kBluetoothEnabledSettingsKey[] = "bt_enabled";
 
@@ -696,7 +697,7 @@ public:
         config.ssid_prefix = "Quellog";
         config.ap_password = "";
         config.language = "zh-CN";
-        config.station_scan_interval_seconds = 15;
+        config.station_scan_interval_seconds = 60;
         if (!WifiManager::GetInstance().Initialize(config)) {
             ESP_LOGE(kTag, "wifi manager init failed");
             network_state_.store(NetworkState::Disconnected, std::memory_order_release);
@@ -884,6 +885,25 @@ public:
             return true;
         }
         return false;
+    }
+
+    void SetInputWakeTask(TaskHandle_t task) override {
+        input_wake_task_ = task;
+    }
+
+    int GetInputPollIntervalMs() const override {
+        const int64_t now_us = esp_timer_get_time();
+        for (const ButtonState& button : buttons_) {
+            if (button.gpio == GPIO_NUM_NC) {
+                continue;
+            }
+            if (button.level == 0 || button.stable_pressed_us != 0 ||
+                (button.last_change_us != 0 &&
+                 now_us - button.last_change_us < static_cast<int64_t>(CONFIG_QUELLOG_INPUT_DEBOUNCE_MS) * 1000LL)) {
+                return 50;
+            }
+        }
+        return 500;
     }
 
     void EnterWifiConfigMode() override {
@@ -1212,7 +1232,7 @@ private:
                 self->BreatheChargeLed();
             } else {
                 self->SetChargeLedBrightness(0);
-                vTaskDelay(pdMS_TO_TICKS(kChargeLedIdleDelayMs));
+                vTaskDelay(pdMS_TO_TICKS(kChargeLedInactiveDelayMs));
             }
         }
     }
@@ -1288,10 +1308,38 @@ private:
         cfg.mode = GPIO_MODE_INPUT;
         cfg.pull_up_en = GPIO_PULLUP_ENABLE;
         cfg.pull_down_en = GPIO_PULLDOWN_DISABLE;
-        cfg.intr_type = GPIO_INTR_DISABLE;
+        cfg.intr_type = GPIO_INTR_ANYEDGE;
         ESP_ERROR_CHECK(gpio_config(&cfg));
+        EnsureButtonIsrService();
+        ESP_ERROR_CHECK(gpio_isr_handler_add(gpio, &ZectrixBoard::ButtonIsrHandler, this));
         state.level = gpio_get_level(gpio);
         ESP_LOGI(kTag, "button gpio=%d mapped", static_cast<int>(gpio));
+    }
+
+    void EnsureButtonIsrService() {
+        static bool installed = false;
+        if (installed) {
+            return;
+        }
+
+        const esp_err_t err = gpio_install_isr_service(0);
+        if (err != ESP_OK && err != ESP_ERR_INVALID_STATE) {
+            ESP_ERROR_CHECK(err);
+        }
+        installed = true;
+    }
+
+    static void IRAM_ATTR ButtonIsrHandler(void* arg) {
+        auto* self = static_cast<ZectrixBoard*>(arg);
+        if (self == nullptr || self->input_wake_task_ == nullptr) {
+            return;
+        }
+
+        BaseType_t higher_priority_task_woken = pdFALSE;
+        vTaskNotifyGiveFromISR(self->input_wake_task_, &higher_priority_task_woken);
+        if (higher_priority_task_woken == pdTRUE) {
+            portYIELD_FROM_ISR();
+        }
     }
 
     ZectrixEpaperDisplay display_;
@@ -1307,6 +1355,7 @@ private:
     bool bluetooth_enabled_ = false;
     int volume_percent_ = kDefaultVolumePercent;
     bool settings_combo_dispatched_ = false;
+    TaskHandle_t input_wake_task_ = nullptr;
 };
 
 }  // namespace

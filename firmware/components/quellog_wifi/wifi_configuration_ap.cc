@@ -22,6 +22,7 @@ constexpr char kTag[] = "WifiConfigAp";
 constexpr EventBits_t kWifiConnectedBit = BIT0;
 constexpr EventBits_t kWifiFailedBit = BIT1;
 constexpr char kWebUrl[] = "http://192.168.4.1";
+constexpr int64_t kScanCacheTtlUs = 10LL * 1000 * 1000;
 
 extern const char index_html_start[] asm("_binary_index_html_start");
 extern const char done_html_start[] asm("_binary_done_html_start");
@@ -167,7 +168,7 @@ void WifiConfigurationAp::Start() {
     timer_args.dispatch_method = ESP_TIMER_TASK;
     timer_args.name = "quellog_ap_scan";
     ESP_ERROR_CHECK(esp_timer_create(&timer_args, &scan_timer_));
-    ScheduleScan();
+    ScheduleScan(1000);
 }
 
 void WifiConfigurationAp::Stop() {
@@ -177,6 +178,7 @@ void WifiConfigurationAp::Stop() {
         esp_timer_delete(scan_timer_);
         scan_timer_ = nullptr;
     }
+    scan_in_progress_ = false;
 
     if (server_ != nullptr) {
         httpd_stop(server_);
@@ -322,6 +324,7 @@ void WifiConfigurationAp::RemoveCredential(const std::string& ssid) {
 }
 
 std::vector<wifi_ap_record_t> WifiConfigurationAp::GetAccessPoints() {
+    RequestScanIfStale();
     std::lock_guard<std::mutex> lock(mutex_);
     return ap_records_;
 }
@@ -629,18 +632,37 @@ void WifiConfigurationAp::ScheduleExit() {
         nullptr);
 }
 
-void WifiConfigurationAp::ScheduleScan() {
+void WifiConfigurationAp::ScheduleScan(int delay_ms) {
     if (scan_timer_ != nullptr) {
         esp_timer_stop(scan_timer_);
-        esp_timer_start_once(scan_timer_, 1000 * 1000);
+        esp_timer_start_once(scan_timer_, static_cast<uint64_t>(std::max(0, delay_ms)) * 1000ULL);
     }
 }
 
 void WifiConfigurationAp::ScanTimerCallback(void* arg) {
     auto* self = static_cast<WifiConfigurationAp*>(arg);
-    if (!self->is_connecting_) {
-        esp_wifi_scan_start(nullptr, false);
+    if (self == nullptr || self->is_connecting_ || self->scan_in_progress_) {
+        return;
     }
+
+    self->scan_in_progress_ = true;
+    const esp_err_t err = esp_wifi_scan_start(nullptr, false);
+    if (err != ESP_OK) {
+        ESP_LOGW(kTag, "config AP scan start failed: %s", esp_err_to_name(err));
+        self->scan_in_progress_ = false;
+    }
+}
+
+void WifiConfigurationAp::RequestScanIfStale() {
+    if (is_connecting_ || scan_in_progress_) {
+        return;
+    }
+
+    const int64_t now_us = esp_timer_get_time();
+    if (last_scan_us_ != 0 && now_us - last_scan_us_ < kScanCacheTtlUs) {
+        return;
+    }
+    ScheduleScan(0);
 }
 
 void WifiConfigurationAp::WifiEventHandler(void* arg,
@@ -663,9 +685,8 @@ void WifiConfigurationAp::WifiEventHandler(void* arg,
         {
             std::lock_guard<std::mutex> lock(self->mutex_);
             self->ap_records_ = std::move(records);
-        }
-        if (!self->is_connecting_) {
-            self->ScheduleScan();
+            self->last_scan_us_ = esp_timer_get_time();
+            self->scan_in_progress_ = false;
         }
     } else if (event_id == WIFI_EVENT_AP_STACONNECTED) {
         auto* event = static_cast<wifi_event_ap_staconnected_t*>(event_data);

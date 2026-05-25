@@ -6,6 +6,9 @@
 #include <string>
 #include <vector>
 
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
+
 class Display;
 
 enum class InputKey {
@@ -83,6 +86,8 @@ public:
     virtual std::string GetCpuInfo() const;
     virtual Display* GetDisplay();
     virtual bool PollInput(InputEvent& event) = 0;
+    virtual void SetInputWakeTask(TaskHandle_t task) { (void)task; }
+    virtual int GetInputPollIntervalMs() const { return 500; }
     virtual bool GetBatteryLevel(int& level) {
         bool charging = false;
         bool external_power = false;

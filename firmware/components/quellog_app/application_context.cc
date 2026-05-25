@@ -12,8 +12,10 @@ constexpr int kStatsPageIndex = 0;
 constexpr int kSettingsPageOffsetFromEnd = 1;
 constexpr int kSettingsItemWifi = 0;
 constexpr int kSettingsItemCount = 6;
-constexpr int kBatteryStatusCheckIntervalUs = 3 * 1000 * 1000;
+constexpr int64_t kBatteryStatusCheckIntervalUs = 30LL * 1000 * 1000;
 constexpr int kRecentRecordsPageSize = 6;
+constexpr int64_t kMinIdleWaitUs = 20 * 1000;
+constexpr int64_t kMaxIdleWaitUs = 30LL * 1000 * 1000;
 
 const char* DashboardPeriodLabel(DashboardPeriod period) {
     switch (period) {
@@ -173,6 +175,35 @@ bool Application::HasBatteryChargingStateChanged(int64_t now_us) {
     return true;
 }
 
+int Application::CalculateIdleWaitMs(int64_t now_us) const {
+    int64_t wait_us = kMaxIdleWaitUs;
+
+    if (current_page_index_ == kStatsPageIndex || IsRecentRecordsPage()) {
+        constexpr int64_t kAutoRefreshIntervalUs =
+            static_cast<int64_t>(CONFIG_QUELLOG_AUTO_REFRESH_SECONDS) * 1000 * 1000;
+        wait_us = std::min(wait_us, std::max<int64_t>(0, last_refresh_us_ + kAutoRefreshIntervalUs - now_us));
+    }
+
+    if (refresh_waiting_for_network_ && refresh_network_deadline_us_ > 0) {
+        wait_us = std::min(wait_us, std::max<int64_t>(0, refresh_network_deadline_us_ - now_us));
+    }
+
+    if (last_battery_status_check_us_ > 0) {
+        wait_us = std::min(wait_us, std::max<int64_t>(0, last_battery_status_check_us_ + kBatteryStatusCheckIntervalUs - now_us));
+    }
+
+    const int input_poll_interval_ms = std::clamp(board_.GetInputPollIntervalMs(), 20, 1000);
+    wait_us = std::min(wait_us, static_cast<int64_t>(input_poll_interval_ms) * 1000);
+    wait_us = std::clamp(wait_us, kMinIdleWaitUs, kMaxIdleWaitUs);
+    return static_cast<int>((wait_us + 999) / 1000);
+}
+
+void Application::WakeApplicationTask() {
+    if (app_task_ != nullptr) {
+        xTaskNotifyGive(app_task_);
+    }
+}
+
 void Application::HandleNetworkEvent(NetworkEvent event, const std::string& data) {
     (void)data;
     switch (event) {
@@ -209,6 +240,7 @@ void Application::HandleNetworkEvent(NetworkEvent event, const std::string& data
             network_state_dirty_.store(true, std::memory_order_release);
             break;
     }
+    WakeApplicationTask();
 }
 
 void Application::UpdateDeviceState() {
@@ -242,7 +274,7 @@ void Application::UpdateDeviceState() {
 }
 
 void Application::UpdateSettingsWebServer() {
-    if (board_.IsWifiConnected() && !board_.IsWifiConfigMode() && !refresh_waiting_for_network_) {
+    if (IsSettingsPage() && board_.IsWifiConnected() && !board_.IsWifiConfigMode() && !refresh_waiting_for_network_) {
         settings_web_server_.Start();
         return;
     }
