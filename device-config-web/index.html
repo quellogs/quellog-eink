@@ -20,7 +20,7 @@
             name="ssid"
             maxlength="32"
             autocomplete="off"
-            placeholder="手动输入 SSID"
+            placeholder="请输入 SSID"
           />
         </label>
 
@@ -33,7 +33,7 @@
               type="password"
               maxlength="64"
               autocomplete="current-password"
-              placeholder="开放网络可留空"
+              placeholder="请输入 Wi-Fi 密码"
             />
             <button id="toggle-password" class="ghost-button inline-button" type="button">
               显示
@@ -56,23 +56,23 @@
         <section id="static-settings" class="static-settings" hidden>
           <label class="field">
             <span>IP 地址</span>
-            <input id="ip" name="ip" inputmode="numeric" autocomplete="off" placeholder="192.168.1.50" />
+            <input id="ip" name="ip" inputmode="numeric" autocomplete="off" placeholder="请输入 IP 地址，如 192.168.1.50" />
           </label>
           <label class="field">
             <span>子网掩码</span>
-            <input id="netmask" name="netmask" inputmode="numeric" autocomplete="off" placeholder="255.255.255.0" />
+            <input id="netmask" name="netmask" inputmode="numeric" autocomplete="off" placeholder="请输入子网掩码，如 255.255.255.0" />
           </label>
           <label class="field">
             <span>网关</span>
-            <input id="gateway" name="gateway" inputmode="numeric" autocomplete="off" placeholder="192.168.1.1" />
+            <input id="gateway" name="gateway" inputmode="numeric" autocomplete="off" placeholder="请输入网关，如 192.168.1.1" />
           </label>
           <label class="field">
             <span>主 DNS</span>
-            <input id="dns1" name="dns1" inputmode="numeric" autocomplete="off" placeholder="223.5.5.5" />
+            <input id="dns1" name="dns1" inputmode="numeric" autocomplete="off" placeholder="请输入主 DNS，如 223.5.5.5" />
           </label>
           <label class="field">
             <span>备 DNS</span>
-            <input id="dns2" name="dns2" inputmode="numeric" autocomplete="off" placeholder="可留空" />
+            <input id="dns2" name="dns2" inputmode="numeric" autocomplete="off" placeholder="请输入备 DNS" />
           </label>
         </section>
 

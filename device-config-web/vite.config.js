@@ -24,7 +24,8 @@ function quellogMockApi() {
   ];
   const deviceApiSettings = {
     baseUrl: "http://192.168.1.10:3120",
-    apiTokenConfigured: true
+    username: "admin",
+    passwordConfigured: true
   };
 
   return {
@@ -145,7 +146,8 @@ function quellogMockApi() {
           res.setHeader("Content-Type", "application/json");
           res.end(JSON.stringify({
             base_url: deviceApiSettings.baseUrl,
-            api_token_configured: deviceApiSettings.apiTokenConfigured
+            username: deviceApiSettings.username,
+            password_configured: deviceApiSettings.passwordConfigured
           }));
           return;
         }
@@ -165,14 +167,26 @@ function quellogMockApi() {
                 return;
               }
               deviceApiSettings.baseUrl = baseUrl.replace(/\/+$/, "");
-              if (typeof payload.api_token === "string") {
-                deviceApiSettings.apiTokenConfigured = Boolean(payload.api_token.trim());
+              deviceApiSettings.username = String(payload.username || "").trim();
+              if (!deviceApiSettings.username) {
+                res.setHeader("Content-Type", "application/json");
+                res.end(JSON.stringify({ success: false, error: "请填写用户名" }));
+                return;
+              }
+              if (typeof payload.password === "string" && payload.password) {
+                deviceApiSettings.passwordConfigured = true;
+              }
+              if (!deviceApiSettings.passwordConfigured) {
+                res.setHeader("Content-Type", "application/json");
+                res.end(JSON.stringify({ success: false, error: "请填写密码" }));
+                return;
               }
               res.setHeader("Content-Type", "application/json");
               res.end(JSON.stringify({
                 success: true,
                 base_url: deviceApiSettings.baseUrl,
-                api_token_configured: deviceApiSettings.apiTokenConfigured
+                username: deviceApiSettings.username,
+                password_configured: deviceApiSettings.passwordConfigured
               }));
             } catch {
               res.statusCode = 400;

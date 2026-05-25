@@ -19,18 +19,28 @@
             id="base-url"
             name="base-url"
             autocomplete="url"
-            placeholder="http://192.168.1.10:3120"
+            placeholder="请输入服务地址"
           />
         </label>
 
         <label class="field">
-          <span>API Token</span>
+          <span>用户名</span>
           <input
-            id="api-token"
-            name="api-token"
+            id="username"
+            name="username"
+            autocomplete="username"
+            placeholder="请输入用户名"
+          />
+        </label>
+
+        <label class="field">
+          <span>密码</span>
+          <input
+            id="password"
+            name="password"
             type="password"
-            autocomplete="off"
-            placeholder="留空则不修改已保存 Token"
+            autocomplete="current-password"
+            placeholder="请输入密码"
           />
         </label>
 

@@ -5,7 +5,8 @@
 
 struct DeviceApiConfig {
     std::string base_url;
-    std::string api_token;
+    std::string username;
+    std::string password;
 };
 
 DeviceApiConfig LoadDeviceApiConfig();

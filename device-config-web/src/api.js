@@ -88,10 +88,10 @@ export async function loadDeviceApiSettings() {
   return parseJsonResponse(response);
 }
 
-export async function saveDeviceApiSettings(baseUrl, apiToken) {
-  const body = { base_url: baseUrl };
-  if (apiToken) {
-    body.api_token = apiToken;
+export async function saveDeviceApiSettings(baseUrl, username, password) {
+  const body = { base_url: baseUrl, username };
+  if (password) {
+    body.password = password;
   }
 
   const response = await fetch("/api/settings", {

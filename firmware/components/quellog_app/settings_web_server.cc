@@ -108,7 +108,8 @@ bool SettingsWebServer::Start() {
     get_settings_handler.handler = [](httpd_req_t* req) -> esp_err_t {
         const DeviceApiConfig config = LoadDeviceApiConfig();
         std::string body = "{\"base_url\":\"" + EscapeJsonString(config.base_url) + "\",";
-        body += "\"api_token_configured\":" + std::string(config.api_token.empty() ? "false" : "true") + "}";
+        body += "\"username\":\"" + EscapeJsonString(config.username) + "\",";
+        body += "\"password_configured\":" + std::string(config.password.empty() ? "false" : "true") + "}";
         SendJson(req, body);
         return ESP_OK;
     };
@@ -131,18 +132,31 @@ bool SettingsWebServer::Start() {
         }
 
         cJSON* base_url_item = cJSON_GetObjectItemCaseSensitive(root, "base_url");
-        cJSON* api_token_item = cJSON_GetObjectItemCaseSensitive(root, "api_token");
+        cJSON* username_item = cJSON_GetObjectItemCaseSensitive(root, "username");
+        cJSON* password_item = cJSON_GetObjectItemCaseSensitive(root, "password");
         const char* base_url = cJSON_IsString(base_url_item) ? base_url_item->valuestring : "";
-        const char* api_token = cJSON_IsString(api_token_item) ? api_token_item->valuestring : nullptr;
+        const char* username = cJSON_IsString(username_item) ? username_item->valuestring : "";
+        const char* password = cJSON_IsString(password_item) ? password_item->valuestring : nullptr;
 
         DeviceApiConfig config = LoadDeviceApiConfig();
         config.base_url = base_url != nullptr ? base_url : "";
-        if (api_token != nullptr) {
-            config.api_token = api_token;
+        config.username = username != nullptr ? username : "";
+        if (password != nullptr && password[0] != '\0') {
+            config.password = password;
         }
         if (NormalizeDeviceApiBaseUrl(config.base_url).empty()) {
             cJSON_Delete(root);
             SendJson(req, "{\"success\":false,\"error\":\"请填写服务地址\"}");
+            return ESP_OK;
+        }
+        if (config.username.empty()) {
+            cJSON_Delete(root);
+            SendJson(req, "{\"success\":false,\"error\":\"请填写用户名\"}");
+            return ESP_OK;
+        }
+        if (config.password.empty()) {
+            cJSON_Delete(root);
+            SendJson(req, "{\"success\":false,\"error\":\"请填写密码\"}");
             return ESP_OK;
         }
 
@@ -151,7 +165,8 @@ bool SettingsWebServer::Start() {
 
         const DeviceApiConfig saved = LoadDeviceApiConfig();
         std::string body = "{\"success\":true,\"base_url\":\"" + EscapeJsonString(saved.base_url) + "\",";
-        body += "\"api_token_configured\":" + std::string(saved.api_token.empty() ? "false" : "true") + "}";
+        body += "\"username\":\"" + EscapeJsonString(saved.username) + "\",";
+        body += "\"password_configured\":" + std::string(saved.password.empty() ? "false" : "true") + "}";
         SendJson(req, body);
         return ESP_OK;
     };

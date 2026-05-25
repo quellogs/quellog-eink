@@ -9,7 +9,8 @@ namespace {
 
 constexpr char kNamespace[] = "device_api";
 constexpr char kBaseUrlKey[] = "base_url";
-constexpr char kApiTokenKey[] = "api_token";
+constexpr char kUsernameKey[] = "username";
+constexpr char kPasswordKey[] = "password";
 
 std::string Trim(const std::string& value) {
     auto begin = std::find_if_not(value.begin(), value.end(), [](unsigned char ch) {
@@ -38,12 +39,14 @@ DeviceApiConfig LoadDeviceApiConfig() {
     Settings settings(kNamespace, false);
     DeviceApiConfig config;
     config.base_url = NormalizeDeviceApiBaseUrl(settings.GetString(kBaseUrlKey, ""));
-    config.api_token = Trim(settings.GetString(kApiTokenKey, ""));
+    config.username = Trim(settings.GetString(kUsernameKey, ""));
+    config.password = settings.GetString(kPasswordKey, "");
     return config;
 }
 
 void SaveDeviceApiConfig(const DeviceApiConfig& config) {
     Settings settings(kNamespace, true);
     settings.SetString(kBaseUrlKey, NormalizeDeviceApiBaseUrl(config.base_url));
-    settings.SetString(kApiTokenKey, Trim(config.api_token));
+    settings.SetString(kUsernameKey, Trim(config.username));
+    settings.SetString(kPasswordKey, config.password);
 }

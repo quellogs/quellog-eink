@@ -470,7 +470,7 @@ void Application::FinishRefreshNetworkSession(bool stop_network) {
 
 bool Application::IsDeviceApiConfigured() const {
     const DeviceApiConfig api_config = LoadDeviceApiConfig();
-    return !api_config.base_url.empty() && !api_config.api_token.empty();
+    return !api_config.base_url.empty() && !api_config.username.empty() && !api_config.password.empty();
 }
 
 void Application::OpenStatsPeriodModal() {

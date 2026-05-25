@@ -28,11 +28,10 @@ void Application::Initialize() {
     });
     LoadSettings();
     const DeviceApiConfig api_config = LoadDeviceApiConfig();
+    const bool api_configured = !api_config.base_url.empty() && !api_config.username.empty() && !api_config.password.empty();
     dashboard_.period = stats_period_;
-    dashboard_.sync_status = api_config.base_url.empty() || api_config.api_token.empty() ? "未配置服务接口" : "等待同步";
-    dashboard_data_state_ =
-        api_config.base_url.empty() || api_config.api_token.empty() ? DashboardDataState::NotConfigured
-                                                                   : DashboardDataState::Loading;
+    dashboard_.sync_status = api_configured ? "等待同步" : "未配置服务接口";
+    dashboard_data_state_ = api_configured ? DashboardDataState::Loading : DashboardDataState::NotConfigured;
     state_.store(kDeviceStateStarting, std::memory_order_release);
     UpdateDeviceState();
     last_refresh_us_ = esp_timer_get_time();
