@@ -23,6 +23,7 @@
 #include <esp_flash.h>
 #include <esp_log.h>
 #include <esp_partition.h>
+#include <esp_pm.h>
 #include <esp_timer.h>
 #include <esp_wifi_types.h>
 #include <freertos/FreeRTOS.h>
@@ -61,6 +62,7 @@ constexpr int kChargeLedBreathPeriodMs = 2400;
 constexpr int kChargeLedBreathStepMs = 40;
 constexpr int kChargeLedIdleDelayMs = 500;
 constexpr int kChargeLedInactiveDelayMs = 30 * 1000;
+constexpr bool kChargeLedStopPwmWhenOff = true;
 constexpr int kDefaultVolumePercent = 50;
 constexpr char kBluetoothEnabledSettingsKey[] = "bt_enabled";
 
@@ -87,6 +89,16 @@ public:
                 ESP_LOGW(kTag, "spi bus free failed: %s", esp_err_to_name(ret));
             }
         }
+#if CONFIG_PM_ENABLE
+        if (apb_pm_lock_ != nullptr) {
+            esp_pm_lock_delete(apb_pm_lock_);
+            apb_pm_lock_ = nullptr;
+        }
+        if (sleep_pm_lock_ != nullptr) {
+            esp_pm_lock_delete(sleep_pm_lock_);
+            sleep_pm_lock_ = nullptr;
+        }
+#endif
     }
 
     void BeginPage() override {
@@ -101,12 +113,14 @@ public:
 
         const bool do_partial = partial_refresh_requested_ && has_displayed_once_;
         ESP_LOGI(kTag, "end page, refresh=%s", do_partial ? "partial" : "full");
+        AcquireRefreshPowerLocks();
         InitializePanel();
         if (do_partial) {
             DisplayPartial();
         } else {
             DisplayFull();
         }
+        ReleaseRefreshPowerLocks();
 
         previous_framebuffer_ = framebuffer_;
         has_displayed_once_ = true;
@@ -145,7 +159,15 @@ private:
     void InitializeHardware() {
         ConfigurePowerPin();
         ConfigureControlPins();
+        ConfigurePowerManagementLocks();
         ConfigureSpi();
+    }
+
+    void ConfigurePowerManagementLocks() {
+#if CONFIG_PM_ENABLE
+        ESP_ERROR_CHECK(esp_pm_lock_create(ESP_PM_APB_FREQ_MAX, 0, "epd-apb", &apb_pm_lock_));
+        ESP_ERROR_CHECK(esp_pm_lock_create(ESP_PM_NO_LIGHT_SLEEP, 0, "epd-refresh", &sleep_pm_lock_));
+#endif
     }
 
     void ConfigurePowerPin() {
@@ -459,8 +481,34 @@ private:
         ESP_LOGI(kTag, "display partial end");
     }
 
+    void AcquireRefreshPowerLocks() {
+#if CONFIG_PM_ENABLE
+        if (apb_pm_lock_ != nullptr) {
+            ESP_ERROR_CHECK(esp_pm_lock_acquire(apb_pm_lock_));
+        }
+        if (sleep_pm_lock_ != nullptr) {
+            ESP_ERROR_CHECK(esp_pm_lock_acquire(sleep_pm_lock_));
+        }
+#endif
+    }
+
+    void ReleaseRefreshPowerLocks() {
+#if CONFIG_PM_ENABLE
+        if (sleep_pm_lock_ != nullptr) {
+            ESP_ERROR_CHECK(esp_pm_lock_release(sleep_pm_lock_));
+        }
+        if (apb_pm_lock_ != nullptr) {
+            ESP_ERROR_CHECK(esp_pm_lock_release(apb_pm_lock_));
+        }
+#endif
+    }
+
     int bytes_per_row_ = 0;
     spi_device_handle_t spi_ = nullptr;
+#if CONFIG_PM_ENABLE
+    esp_pm_lock_handle_t apb_pm_lock_ = nullptr;
+    esp_pm_lock_handle_t sleep_pm_lock_ = nullptr;
+#endif
     bool spi_bus_initialized_ = false;
     bool hardware_ready_ = false;
     bool partial_refresh_requested_ = false;
@@ -1159,7 +1207,14 @@ private:
         channel_cfg.hpoint = 0;
         ESP_ERROR_CHECK_WITHOUT_ABORT(ledc_channel_config(&channel_cfg));
 
-        SetChargeLedBrightness(0);
+#if CONFIG_PM_ENABLE
+        ESP_ERROR_CHECK_WITHOUT_ABORT(
+            esp_pm_lock_create(ESP_PM_APB_FREQ_MAX, 0, "charge-led-apb", &charge_led_apb_pm_lock_));
+        ESP_ERROR_CHECK_WITHOUT_ABORT(
+            esp_pm_lock_create(ESP_PM_NO_LIGHT_SLEEP, 0, "charge-led", &charge_led_sleep_pm_lock_));
+#endif
+
+        SetChargeLedBrightness(0, true);
         xTaskCreatePinnedToCore(&ZectrixBoard::ChargeLedTask, "ChargeLedTask", 3 * 1024, this, 2, nullptr, 0);
     }
 
@@ -1179,12 +1234,12 @@ private:
         return clamped;
     }
 
-    void SetChargeLedBrightness(uint32_t brightness) {
+    void SetChargeLedBrightness(uint32_t brightness, bool stop_pwm_when_off = false) {
         if (QUELLOG_CHARGE_LED_GPIO == GPIO_NUM_NC) {
             return;
         }
 
-        if (brightness == 0) {
+        if (brightness == 0 && stop_pwm_when_off) {
             // 熄灭时停止 PWM 并固定到关闭电平，避免低电平点亮 LED 因极窄脉冲产生微光。
             constexpr uint32_t off_level = QUELLOG_CHARGE_LED_ACTIVE_LEVEL == 0 ? 1 : 0;
             ESP_ERROR_CHECK_WITHOUT_ABORT(ledc_stop(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0, off_level));
@@ -1193,6 +1248,33 @@ private:
 
         ESP_ERROR_CHECK_WITHOUT_ABORT(ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0, PwmDutyFromBrightness(brightness)));
         ESP_ERROR_CHECK_WITHOUT_ABORT(ledc_update_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0));
+    }
+
+    void SetChargeLedActive(bool active) {
+#if CONFIG_PM_ENABLE
+        if (charge_led_pm_lock_acquired_ == active) {
+            return;
+        }
+
+        if (active) {
+            if (charge_led_apb_pm_lock_ != nullptr) {
+                ESP_ERROR_CHECK_WITHOUT_ABORT(esp_pm_lock_acquire(charge_led_apb_pm_lock_));
+            }
+            if (charge_led_sleep_pm_lock_ != nullptr) {
+                ESP_ERROR_CHECK_WITHOUT_ABORT(esp_pm_lock_acquire(charge_led_sleep_pm_lock_));
+            }
+        } else {
+            if (charge_led_sleep_pm_lock_ != nullptr) {
+                ESP_ERROR_CHECK_WITHOUT_ABORT(esp_pm_lock_release(charge_led_sleep_pm_lock_));
+            }
+            if (charge_led_apb_pm_lock_ != nullptr) {
+                ESP_ERROR_CHECK_WITHOUT_ABORT(esp_pm_lock_release(charge_led_apb_pm_lock_));
+            }
+        }
+        charge_led_pm_lock_acquired_ = active;
+#else
+        (void)active;
+#endif
     }
 
     void DelayChargeLedMs(int delay_ms) {
@@ -1225,13 +1307,16 @@ private:
                 snapshot = self->charge_status_.Get();
             }
             if (snapshot.full) {
+                self->SetChargeLedActive(true);
                 // 满电后常亮，但仍受 ClampChargeLedBrightness 的最高亮度限制。
                 self->SetChargeLedBrightness(kChargeLedPwmMaxDuty);
                 vTaskDelay(pdMS_TO_TICKS(kChargeLedIdleDelayMs));
             } else if (snapshot.charging) {
+                self->SetChargeLedActive(true);
                 self->BreatheChargeLed();
             } else {
-                self->SetChargeLedBrightness(0);
+                self->SetChargeLedActive(false);
+                self->SetChargeLedBrightness(0, kChargeLedStopPwmWhenOff);
                 vTaskDelay(pdMS_TO_TICKS(kChargeLedInactiveDelayMs));
             }
         }
@@ -1346,6 +1431,11 @@ private:
     std::array<ButtonState, 3> buttons_ = {};
     ChargeStatus charge_status_;
     std::mutex charge_status_mutex_;
+#if CONFIG_PM_ENABLE
+    esp_pm_lock_handle_t charge_led_apb_pm_lock_ = nullptr;
+    esp_pm_lock_handle_t charge_led_sleep_pm_lock_ = nullptr;
+    bool charge_led_pm_lock_acquired_ = false;
+#endif
     std::atomic<NetworkState> network_state_{NetworkState::Unknown};
     NetworkEventCallback network_event_callback_;
     bool network_started_ = false;
