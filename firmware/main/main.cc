@@ -23,6 +23,23 @@ void ConfigurePowerManagement() {
 #endif
 }
 
+void KeepUsbSerialAvailable() {
+#if CONFIG_PM_ENABLE && (CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG_ENABLED || CONFIG_USJ_ENABLE_USB_SERIAL_JTAG)
+    static esp_pm_lock_handle_t usb_serial_pm_lock = nullptr;
+    const esp_err_t create_err =
+        esp_pm_lock_create(ESP_PM_NO_LIGHT_SLEEP, 0, "usb-serial", &usb_serial_pm_lock);
+    if (create_err != ESP_OK) {
+        ESP_LOGW(kTag, "usb serial power lock create failed: %s", esp_err_to_name(create_err));
+        return;
+    }
+
+    const esp_err_t acquire_err = esp_pm_lock_acquire(usb_serial_pm_lock);
+    if (acquire_err != ESP_OK) {
+        ESP_LOGW(kTag, "usb serial power lock acquire failed: %s", esp_err_to_name(acquire_err));
+    }
+#endif
+}
+
 }  // namespace
 
 extern "C" void app_main(void) {
@@ -34,6 +51,7 @@ extern "C" void app_main(void) {
     ESP_ERROR_CHECK(ret);
 
     ConfigurePowerManagement();
+    KeepUsbSerialAvailable();
 
     auto& app = Application::GetInstance();
     app.Initialize();
