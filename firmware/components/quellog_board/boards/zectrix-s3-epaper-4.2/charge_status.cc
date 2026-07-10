@@ -21,10 +21,6 @@ void ChargeStatus::Init(gpio_num_t detect_gpio, gpio_num_t full_gpio, int64_t no
     Tick(now_ms);
 }
 
-void ChargeStatus::OnStateChanged(std::function<void(const Snapshot&)> cb) {
-    on_state_changed_ = std::move(cb);
-}
-
 void ChargeStatus::Tick(int64_t now_ms) {
     const bool detect_high = gpio_get_level(detect_gpio_) == CHARGE_DETECT_CHARGING_LEVEL;
     const bool full_high = gpio_get_level(full_gpio_) == 1;
@@ -80,10 +76,7 @@ void ChargeStatus::Tick(int64_t now_ms) {
 void ChargeStatus::UpdateSnapshot(State state, bool power_present, bool full, bool no_battery) {
     const bool charging = (state == State::kCharging || state == State::kNoBattery);
     const uint32_t packed = Pack(state, power_present, charging, full, no_battery);
-    const uint32_t old = snapshot_.exchange(packed, std::memory_order_relaxed);
-    if (old != packed && on_state_changed_) {
-        on_state_changed_(Unpack(packed));
-    }
+    snapshot_.store(packed, std::memory_order_relaxed);
 }
 
 uint32_t ChargeStatus::Pack(State state, bool power_present, bool charging, bool full, bool no_battery) {

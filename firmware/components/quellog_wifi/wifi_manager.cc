@@ -83,11 +83,6 @@ bool WifiManager::Initialize(const WifiManagerConfig& config) {
     return true;
 }
 
-bool WifiManager::IsInitialized() const {
-    std::lock_guard<std::mutex> lock(mutex_);
-    return initialized_;
-}
-
 void WifiManager::StartStation(bool start_scan) {
     bool notify_config_exit = false;
     WifiStation* station = nullptr;
@@ -336,11 +331,6 @@ bool WifiManager::IsConfigMode() const {
 std::string WifiManager::GetApSsid() const {
     std::lock_guard<std::mutex> lock(mutex_);
     return config_ap_ != nullptr ? config_ap_->GetSsid() : "";
-}
-
-std::string WifiManager::GetApPassword() const {
-    std::lock_guard<std::mutex> lock(mutex_);
-    return config_ap_ != nullptr ? config_ap_->GetPassword() : "";
 }
 
 std::string WifiManager::GetApWebUrl() const {

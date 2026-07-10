@@ -5,7 +5,6 @@
 
 #include <atomic>
 #include <cstdint>
-#include <functional>
 
 class ChargeStatus {
 public:
@@ -27,7 +26,6 @@ public:
     void Init(gpio_num_t detect_gpio, gpio_num_t full_gpio, int64_t now_ms);
     void Tick(int64_t now_ms);
     Snapshot Get() const;
-    void OnStateChanged(std::function<void(const Snapshot&)> cb);
 
 private:
     void UpdateSnapshot(State state, bool power_present, bool full, bool no_battery);
@@ -44,8 +42,6 @@ private:
     int64_t last_power_present_ms_ = -1;
 
     std::atomic<uint32_t> snapshot_{0};
-    std::function<void(const Snapshot&)> on_state_changed_;
-
     static constexpr int kPowerPresentHoldMs = 1000;
     static constexpr int kStableHighMs = 400;
     static constexpr int kAltWindowMs = 1500;

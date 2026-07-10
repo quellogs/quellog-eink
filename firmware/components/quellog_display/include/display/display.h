@@ -162,7 +162,6 @@ public:
     virtual ~Display() = default;
 
     virtual void RenderPage(const PageModel& model, const TopStatusBarState& top_status_bar);
-    virtual void SetStatus(const char* status);
     virtual void ShowNotification(const char* notification);
     virtual void RequestFullRefresh();
     virtual void RequestPartialRefresh();
@@ -195,7 +194,6 @@ protected:
     void DrawMenuIcon(SplitViewMenuIcon icon, const Rect& rect, PixelColor color);
     void DrawHorizontalDashes(int x, int y, int width, int dash_length, int gap_length);
     void DrawArrowLine(int x1, int y1, int x2, int y2, int arrow_size);
-    void FillRectPattern(const Rect& rect, int step_x, int step_y);
     void RenderQrCode(const std::string& payload, const Rect& rect);
     void RenderWifiSwitch(const SplitViewModel& model, const Rect& rect);
     void RenderWifiListItem(const WifiListItemModel& item, const Rect& rect);

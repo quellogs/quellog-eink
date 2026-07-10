@@ -12,7 +12,6 @@ idf_component_register(
         bt
         driver
         esp_adc
-        esp_app_format
         esp_partition
         esp_pm
         esp_timer

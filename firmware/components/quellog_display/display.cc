@@ -315,10 +315,6 @@ void Display::RenderPage(const PageModel& model, const TopStatusBarState& top_st
     EndPage();
 }
 
-void Display::SetStatus(const char* status) {
-    ESP_LOGI(kTag, "status: %s", status);
-}
-
 void Display::ShowNotification(const char* notification) {
     ESP_LOGI(kTag, "notice: %s", notification);
 }
@@ -599,20 +595,6 @@ void Display::DrawArrowLine(int x1, int y1, int x2, int y2, int arrow_size) {
         const int direction = x2 >= x1 ? 1 : -1;
         DrawLine(x2, y2, x2 - (arrow_size * direction), y2 - arrow_size);
         DrawLine(x2, y2, x2 - (arrow_size * direction), y2 + arrow_size);
-    }
-}
-
-void Display::FillRectPattern(const Rect& rect, int step_x, int step_y) {
-    if (rect.w <= 0 || rect.h <= 0) {
-        return;
-    }
-
-    const int safe_step_x = std::max(2, step_x);
-    const int safe_step_y = std::max(2, step_y);
-    for (int y = rect.y + 1; y < rect.y + rect.h - 1; y += safe_step_y) {
-        for (int x = rect.x + 1; x < rect.x + rect.w - 1; x += safe_step_x) {
-            SetPixel(x, y, true);
-        }
     }
 }
 

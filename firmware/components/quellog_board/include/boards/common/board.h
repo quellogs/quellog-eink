@@ -103,7 +103,6 @@ public:
         (void)capacity_mah;
         return false;
     }
-    virtual std::string GetSystemInfoJson();
     virtual void StartNetwork() {}
     virtual void StopNetwork() {}
     virtual bool IsWifiEnabled() const { return false; }

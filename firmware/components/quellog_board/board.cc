@@ -1,6 +1,5 @@
 #include "board.h"
 
-#include <esp_app_desc.h>
 #include <esp_chip_info.h>
 #include <esp_log.h>
 #include <esp_random.h>
@@ -44,21 +43,4 @@ std::string Board::GetCpuInfo() const {
     esp_chip_info(&chip_info);
 
     return std::string(CONFIG_IDF_TARGET) + "  " + std::to_string(chip_info.cores) + "核";
-}
-
-std::string Board::GetSystemInfoJson() {
-    esp_chip_info_t chip_info = {};
-    esp_chip_info(&chip_info);
-    const esp_app_desc_t* app = esp_app_get_description();
-
-    char json[512];
-    snprintf(json, sizeof(json),
-             "{\"board\":\"%s\",\"uuid\":\"%s\",\"project\":\"%s\",\"version\":\"%s\",\"idf\":\"%s\",\"cores\":%d}",
-             BOARD_NAME,
-             uuid_.c_str(),
-             app->project_name,
-             app->version,
-             app->idf_ver,
-             chip_info.cores);
-    return std::string(json);
 }

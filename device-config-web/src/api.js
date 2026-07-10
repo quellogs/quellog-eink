@@ -14,16 +14,6 @@ async function parseJsonResponse(response) {
   return body;
 }
 
-export async function scanNetworks() {
-  const response = await fetch("/scan", {
-    cache: "no-store",
-    headers: {
-      Accept: "application/json"
-    }
-  });
-  return parseJsonResponse(response);
-}
-
 export async function loadCredentials() {
   const response = await fetch("/credentials", {
     cache: "no-store",
@@ -52,18 +42,6 @@ export async function submitCredentials(payload) {
       Accept: "application/json"
     },
     body: JSON.stringify(payload)
-  });
-  return parseJsonResponse(response);
-}
-
-export async function deleteCredential(ssid) {
-  const response = await fetch("/credentials/delete", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Accept: "application/json"
-    },
-    body: JSON.stringify({ ssid })
   });
   return parseJsonResponse(response);
 }

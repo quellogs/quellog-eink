@@ -36,7 +36,6 @@ public:
     static WifiManager& GetInstance();
 
     bool Initialize(const WifiManagerConfig& config = WifiManagerConfig{});
-    bool IsInitialized() const;
 
     void StartStation(bool start_scan = true);
     void StopStation();
@@ -54,7 +53,6 @@ public:
     void StopConfigAp();
     bool IsConfigMode() const;
     std::string GetApSsid() const;
-    std::string GetApPassword() const;
     std::string GetApWebUrl() const;
     std::string GetPendingConfigSsid() const;
 
